@@ -11,7 +11,7 @@ export default function App() {
 
   // Header edit state
   const [editingProfile, setEditingProfile] = useState(false)
-  const [profileForm, setProfileForm] = useState({ display_name: "", company_name: "", company_id: "" })
+  const [profileForm, setProfileForm] = useState({ display_name: "", company_name: "", company_id: "", phone_number: "" })
 
   // Inline receipt edit state
   const [editingReceiptId, setEditingReceiptId] = useState<number | null>(null)
@@ -44,6 +44,7 @@ export default function App() {
       display_name: c.display_name || "",
       company_name: c.company_name || "",
       company_id: c.company_id || "",
+      phone_number: c.phone_number.startsWith("drive_") ? "" : c.phone_number,
     })
     const data = await api.getReceipts(c.id)
     setReceipts(data)
@@ -59,6 +60,7 @@ export default function App() {
       display_name: profileForm.display_name || null,
       company_name: profileForm.company_name || null,
       company_id: profileForm.company_id || null,
+      phone_number: profileForm.phone_number || prev.phone_number,
     } : prev)
   }
 
@@ -254,7 +256,7 @@ export default function App() {
                 {c.company_name && (
                   <div className="customer-company">{c.company_name}{c.company_id ? ` · ${c.company_id}` : ""}</div>
                 )}
-                <div className="customer-phone">{c.display_name ? c.phone_number : ""}</div>
+                <div className="customer-phone">{c.display_name && !c.phone_number.startsWith("drive_") ? c.phone_number : ""}</div>
                 <div className="customer-stats">
                   <span className="income-badge">+{c.total_income.toFixed(0)}</span>
                   <span className="expense-badge">-{c.total_expense.toFixed(0)}</span>
@@ -305,6 +307,13 @@ export default function App() {
                         placeholder="Company ID or registration number"
                       />
                     </label>
+                    <label>WhatsApp Number
+                      <input
+                        value={profileForm.phone_number}
+                        onChange={e => setProfileForm(p => ({ ...p, phone_number: e.target.value }))}
+                        placeholder="+61400000000"
+                      />
+                    </label>
                     <div className="profile-edit-btns">
                       <button className="btn-save" onClick={saveProfile}>Save</button>
                       <button className="btn-cancel" onClick={() => setEditingProfile(false)}>Cancel</button>
@@ -323,7 +332,7 @@ export default function App() {
                         {selected.company_id && <span className="header-company-id"> · {selected.company_id}</span>}
                       </div>
                     )}
-                    <p className="phone-sub">{selected.phone_number}</p>
+                    <p className="phone-sub">{selected.phone_number.startsWith("drive_") ? "No phone" : selected.phone_number}</p>
                     {selected.drive_share_link && (
                       <a
                         href={selected.drive_share_link}

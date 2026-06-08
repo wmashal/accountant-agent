@@ -68,7 +68,7 @@ export const api = {
       body: JSON.stringify({ display_name }),
     }).then(r => r.json()),
 
-  updateCustomerProfile: (id: number, patch: { display_name?: string; company_name?: string; company_id?: string }) =>
+  updateCustomerProfile: (id: number, patch: { display_name?: string; company_name?: string; company_id?: string; phone_number?: string }) =>
     fetch(`${BASE}/customers/${id}/profile`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

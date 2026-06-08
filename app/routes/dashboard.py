@@ -63,6 +63,7 @@ class UpdateCustomerProfileRequest(BaseModel):
     display_name: Optional[str] = None
     company_name: Optional[str] = None
     company_id: Optional[str] = None
+    phone_number: Optional[str] = None
 
 
 class CreateCustomerRequest(BaseModel):
@@ -258,5 +259,12 @@ async def update_customer_profile(
         customer.company_name = body.company_name.strip() or None
     if body.company_id is not None:
         customer.company_id = body.company_id.strip() or None
+    if body.phone_number is not None:
+        new_phone = body.phone_number.strip()
+        if new_phone:
+            customer.phone_number = new_phone
+            # If this customer was Drive-only, they now have a real phone
+            if customer.source == "drive":
+                customer.source = "both"
     await session.commit()
     return {"ok": True}
