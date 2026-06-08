@@ -150,6 +150,7 @@ async def upsert_receipt(
     receipt.abn = data.abn
     receipt.receipt_language = data.receipt_language
     receipt.extraction_model = data.extraction_model
+    receipt.transaction_type = data.transaction_type
     receipt.file_url = file_url
     receipt.status = status
     await session.commit()
@@ -186,6 +187,7 @@ async def upsert_receipt_from_drive(
     receipt.abn = data.abn
     receipt.receipt_language = data.receipt_language
     receipt.extraction_model = data.extraction_model
+    receipt.transaction_type = data.transaction_type
     receipt.file_url = file_url
     receipt.drive_file_id = drive_file_id
     receipt.status = "confirmed"

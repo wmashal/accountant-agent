@@ -7,7 +7,7 @@ from app.models.receipt import ReceiptData
 logger = logging.getLogger(__name__)
 
 
-def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, default_currency: str = "USD") -> ReceiptData:
+def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, default_currency: str = "USD", customer_identity: set[str] | None = None) -> ReceiptData:
     vendor = str(raw.get("vendor", "Unknown")).strip()
     cost = _parse_float(raw.get("cost"))
     receipt_language = raw.get("receipt_language", "unknown")
@@ -22,6 +22,14 @@ def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, d
     currency = str(raw.get("currency") or "").strip().upper()
     if not currency or currency == "$":
         currency = default_currency
+
+    # --- Transaction type ---
+    # If vendor text contains the customer's own company_id or company_name → income
+    transaction_type = "expense"
+    if customer_identity:
+        vendor_lower = vendor.lower()
+        if any(identity.lower() in vendor_lower for identity in customer_identity if identity):
+            transaction_type = "income"
 
     # --- Date ---
     date = _parse_date(raw.get("date", ""))
@@ -42,6 +50,7 @@ def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, d
         abn_raw=abn_raw if not abn_valid and abn_raw else None,
         receipt_language=receipt_language,
         extraction_model=extraction_model,
+        transaction_type=transaction_type,
         raw_ocr=raw_ocr,
     )
 

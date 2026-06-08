@@ -100,15 +100,16 @@ async def process_single_receipt(
             raw_result, model = await extract(file_bytes, content_type, ocr_text=None)
             logger.info(f"Extraction complete: model={model} vendor={raw_result.get('vendor')} cost={raw_result.get('cost')}")
 
-            # Look up customer's default currency
+            # Look up customer's default currency and identity
             from app.models.receipt import Customer
             from sqlalchemy import select as sa_select
             cust = await session.execute(sa_select(Customer).where(Customer.phone_number == from_number))
             customer = cust.scalar_one_or_none()
             default_currency = customer.default_currency if customer else "USD"
+            customer_identity = {customer.company_id, customer.company_name} if customer else set()
 
             # Normalize
-            data = normalize(raw_result, extraction_model=model, raw_ocr=ocr_text, default_currency=default_currency)
+            data = normalize(raw_result, extraction_model=model, raw_ocr=ocr_text, default_currency=default_currency, customer_identity=customer_identity)
             logger.info(f"Normalized: {data.vendor} {data.cost} {data.currency}")
 
             # Save file
@@ -197,6 +198,7 @@ async def process_single_receipt_from_drive(
             num_pages = len(reader.pages)
             if num_pages > 1:
                 logger.info(f"Multi-page Drive PDF: {num_pages} pages (file_id={drive_file_id})")
+                last_data = None
                 for page_num in range(num_pages):
                     writer = PdfWriter()
                     writer.add_page(reader.pages[page_num])
@@ -204,12 +206,12 @@ async def process_single_receipt_from_drive(
                     writer.write(buf)
                     page_bytes = buf.getvalue()
                     page_sid = f"drive_{drive_file_id[:36]}_p{page_num + 1}"
-                    await _process_drive_single_page(page_bytes, content_type, customer, drive_file_id, page_sid)
-                return
+                    last_data = await _process_drive_single_page(page_bytes, content_type, customer, drive_file_id, page_sid)
+                return last_data
         except Exception as e:
             logger.warning(f"Drive PDF split failed ({e}), processing as single page")
 
-    await _process_drive_single_page(file_bytes, content_type, customer, drive_file_id, message_sid)
+    return await _process_drive_single_page(file_bytes, content_type, customer, drive_file_id, message_sid)
 
 
 async def _process_drive_single_page(
@@ -219,13 +221,14 @@ async def _process_drive_single_page(
     drive_file_id: str,
     message_sid: str,
 ):
-    """Internal: extract + save one Drive receipt page."""
+    """Internal: extract + save one Drive receipt page. Returns ReceiptData (or None on error)."""
     async with SessionLocal() as session:
         try:
             raw_result, model = await extract(file_bytes, content_type, ocr_text=None)
             logger.info(f"Drive extraction: model={model} vendor={raw_result.get('vendor')} cost={raw_result.get('cost')}")
 
-            data = normalize(raw_result, extraction_model=model, raw_ocr=None, default_currency=customer.default_currency)
+            customer_identity = {customer.company_id, customer.company_name}
+            data = normalize(raw_result, extraction_model=model, raw_ocr=None, default_currency=customer.default_currency, customer_identity=customer_identity)
 
             # Store file locally (same as WhatsApp path)
             phone_key = f"drive_{customer.id}"
@@ -241,6 +244,8 @@ async def _process_drive_single_page(
                 drive_file_id=drive_file_id,
             )
             logger.info(f"Drive receipt saved: {message_sid}")
+            return data
 
         except Exception as e:
             logger.error(f"Failed to process Drive receipt {message_sid}: {e}", exc_info=True)
+            return None

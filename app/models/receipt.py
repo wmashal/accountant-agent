@@ -73,4 +73,5 @@ class ReceiptData:
     abn_raw: Optional[str]
     receipt_language: str
     extraction_model: str
+    transaction_type: str = "expense"
     raw_ocr: Optional[str] = None

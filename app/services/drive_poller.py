@@ -69,15 +69,16 @@ async def poll_customer_folder(customer: Customer):
             # Download the file (sync Drive API call — run in thread)
             file_bytes, content_type = await loop.run_in_executor(None, download_file, file_id)
 
-            await process_single_receipt_from_drive(
+            receipt = await process_single_receipt_from_drive(
                 file_bytes=file_bytes,
                 content_type=content_type,
                 customer=customer,
                 drive_file_id=file_id,
             )
 
-            # Move to processed/ subfolder so the user sees what's been handled
-            await move_to_processed(file_id, folder_id)
+            # Move to processed/YYYY-MM/ using the receipt's extracted date
+            receipt_date = receipt.date if receipt else ""
+            await move_to_processed(file_id, folder_id, receipt_date=receipt_date)
 
         except Exception as e:
             logger.error(f"Failed to process Drive file {file_id} for customer {customer.id}: {e}", exc_info=True)

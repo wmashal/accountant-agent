@@ -143,3 +143,25 @@
 .drive-folder-link { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #6366f1; text-decoration: none; margin-top: 4px; font-weight: 500; }
 .drive-folder-link:hover { text-decoration: underline; color: #4f46e5; }
 
+
+/* Filter tabs */
+.type-filter-tabs { display: flex; gap: 8px; padding: 12px 0 8px; }
+.type-filter-tab { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; border: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+.type-filter-tab:hover { background: #f3f4f6; border-color: #d1d5db; }
+.type-filter-tab.active { background: #6366f1; border-color: #6366f1; color: #fff; }
+.type-filter-tab.active.income { background: #16a34a; border-color: #16a34a; }
+.type-filter-tab.active.expense { background: #dc2626; border-color: #dc2626; }
+.tab-count { background: rgba(0,0,0,0.1); border-radius: 10px; padding: 1px 6px; font-size: 11px; }
+.type-filter-tab.active .tab-count { background: rgba(255,255,255,0.25); }
+
+/* Month groups */
+.month-group { margin-bottom: 4px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+.month-group-header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: #f8fafc; cursor: pointer; user-select: none; border-bottom: 1px solid #e5e7eb; }
+.month-group-header:hover { background: #f1f5f9; }
+.month-toggle { font-size: 11px; color: #9ca3af; width: 12px; }
+.month-label { font-size: 14px; font-weight: 600; color: #374151; }
+.month-stats { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.month-count { font-size: 12px; color: #9ca3af; }
+.month-group .receipts-table { border: none; border-radius: 0; }
+.month-group .receipts-table thead th { background: #f8fafc; }
+.no-data { padding: 32px; text-align: center; color: #9ca3af; font-size: 14px; }

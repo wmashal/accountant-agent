@@ -17,6 +17,11 @@ export default function App() {
   const [editingReceiptId, setEditingReceiptId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState<Partial<Receipt>>({})
 
+  // Filter tabs
+  const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all")
+  // Collapsed month groups
+  const [collapsedMonths, setCollapsedMonths] = useState<Set<string>>(new Set())
+
   // File preview modal
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewIsPdf, setPreviewIsPdf] = useState(false)
@@ -384,108 +389,148 @@ export default function App() {
             </div>
 
             <div className="receipts-table-wrap">
-              <table className="receipts-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Vendor</th>
-                    <th>Amount</th>
-                    <th>Tax</th>
-                    <th>ABN</th>
-                    <th>Type</th>
-                    <th>Status</th>
-                    <th>File</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {receipts.length === 0 ? (
-                    <tr><td colSpan={9} className="no-data">No receipts</td></tr>
-                  ) : receipts.map(r => (
-                    editingReceiptId === r.id ? (
-                      <tr key={r.id} className="edit-row">
-                        <td>
-                          <input className="edit-input" value={editForm.date || ""} onChange={e => setEditForm(p => ({ ...p, date: e.target.value }))} placeholder="YYYY-MM-DD" />
-                        </td>
-                        <td>
-                          <input className="edit-input" value={editForm.vendor || ""} onChange={e => setEditForm(p => ({ ...p, vendor: e.target.value }))} placeholder="Vendor" />
-                        </td>
-                        <td>
-                          <input className="edit-input edit-input-sm" type="number" value={editForm.cost ?? ""} onChange={e => setEditForm(p => ({ ...p, cost: parseFloat(e.target.value) || undefined }))} placeholder="Amount" />
-                          <input className="edit-input edit-input-xs" value={editForm.currency || ""} onChange={e => setEditForm(p => ({ ...p, currency: e.target.value }))} placeholder="CCY" maxLength={3} />
-                        </td>
-                        <td>
-                          <input className="edit-input edit-input-sm" type="number" value={editForm.tax ?? ""} onChange={e => setEditForm(p => ({ ...p, tax: parseFloat(e.target.value) || undefined }))} placeholder="Tax" />
-                        </td>
-                        <td>
-                          <input className="edit-input" value={editForm.abn || ""} onChange={e => setEditForm(p => ({ ...p, abn: e.target.value }))} placeholder="ABN" />
-                        </td>
-                        <td>
-                          <select className="edit-select" value={editForm.transaction_type} onChange={e => setEditForm(p => ({ ...p, transaction_type: e.target.value as "income" | "expense" }))}>
-                            <option value="income">Income</option>
-                            <option value="expense">Expense</option>
-                          </select>
-                        </td>
-                        <td>
-                          <select className="edit-select" value={editForm.status} onChange={e => setEditForm(p => ({ ...p, status: e.target.value }))}>
-                            <option value="pending_confirmation">Pending</option>
-                            <option value="confirmed">Confirmed</option>
-                            <option value="rejected">Rejected</option>
-                            <option value="error">Error</option>
-                          </select>
-                        </td>
-                        <td>
-                          {r.file_url ? (
-                            <button className="file-link-btn" onClick={() => openPreview(r.file_url!)}>View</button>
-                          ) : r.drive_file_id ? (
-                            <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="file-link-btn">Drive</a>
-                          ) : "—"}
-                        </td>
-                        <td className="action-cell">
-                          <button className="btn-save btn-sm" onClick={() => saveEdit(r)}>Save</button>
-                          <button className="btn-cancel btn-sm" onClick={() => setEditingReceiptId(null)}>Cancel</button>
-                        </td>
-                      </tr>
-                    ) : (
-                      <tr key={r.id}>
-                        <td>{r.date || "—"}</td>
-                        <td>{r.vendor || "—"}</td>
-                        <td className="amount">
-                          {r.cost != null ? `${r.currency} ${r.cost.toFixed(2)}` : "—"}
-                        </td>
-                        <td>{r.tax != null ? `${r.currency} ${r.tax.toFixed(2)}` : "—"}</td>
-                        <td>{r.abn || "—"}</td>
-                        <td>
-                          <button
-                            className={`type-btn ${r.transaction_type}`}
-                            onClick={() => toggleType(r)}
-                            title="Click to toggle"
-                          >
-                            {r.transaction_type === "income" ? "↑ Income" : "↓ Expense"}
-                          </button>
-                        </td>
-                        <td>
-                          <span className={`status-badge status-${r.status}`}>
-                            {r.status.replace(/_/g, " ")}
-                          </span>
-                        </td>
-                        <td>
-                          {r.file_url ? (
-                            <button className="file-link-btn" onClick={() => openPreview(r.file_url!)}>
-                              View
-                            </button>
-                          ) : r.drive_file_id ? (
-                            <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="file-link-btn">Drive</a>
-                          ) : "—"}
-                        </td>
-                        <td className="action-cell">
-                          <button className="btn-edit" onClick={() => startEdit(r)}>Edit</button>
-                        </td>
-                      </tr>
-                    )
-                  ))}
-                </tbody>
-              </table>
+              {/* Filter tabs */}
+              <div className="type-filter-tabs">
+                {(["all", "income", "expense"] as const).map(tab => (
+                  <button
+                    key={tab}
+                    className={`type-filter-tab ${typeFilter === tab ? "active" : ""} ${tab !== "all" ? tab : ""}`}
+                    onClick={() => setTypeFilter(tab)}
+                  >
+                    {tab === "all" ? "All" : tab === "income" ? "↑ Income" : "↓ Expense"}
+                    <span className="tab-count">
+                      {receipts.filter(r => tab === "all" || r.transaction_type === tab).length}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Receipts grouped by YYYY-MM */}
+              {(() => {
+                const filtered = receipts.filter(r => typeFilter === "all" || r.transaction_type === typeFilter)
+                if (filtered.length === 0) return <p className="no-data">No receipts</p>
+
+                // Group by YYYY-MM (receipts with no date go to "Unknown")
+                const groups: Record<string, typeof filtered> = {}
+                filtered.forEach(r => {
+                  const month = r.date && r.date.length >= 7 ? r.date.slice(0, 7) : "Unknown"
+                  if (!groups[month]) groups[month] = []
+                  groups[month].push(r)
+                })
+                const sortedMonths = Object.keys(groups).sort((a, b) => b.localeCompare(a))
+
+                return sortedMonths.map(month => {
+                  const collapsed = collapsedMonths.has(month)
+                  const monthReceipts = groups[month]
+                  const monthIncome = monthReceipts.filter(r => r.transaction_type === "income" && r.status === "confirmed").reduce((s, r) => s + (r.cost || 0), 0)
+                  const monthExpense = monthReceipts.filter(r => r.transaction_type === "expense" && r.status === "confirmed").reduce((s, r) => s + (r.cost || 0), 0)
+                  const ccy = monthReceipts[0]?.currency || ""
+
+                  return (
+                    <div key={month} className="month-group">
+                      <div
+                        className="month-group-header"
+                        onClick={() => setCollapsedMonths(prev => {
+                          const next = new Set(prev)
+                          collapsed ? next.delete(month) : next.add(month)
+                          return next
+                        })}
+                      >
+                        <span className="month-toggle">{collapsed ? "▶" : "▼"}</span>
+                        <span className="month-label">{month === "Unknown" ? "Unknown Date" : month}</span>
+                        <span className="month-stats">
+                          <span className="month-count">{monthReceipts.length} receipts</span>
+                          {monthIncome > 0 && <span className="income-badge">+{ccy} {monthIncome.toFixed(2)}</span>}
+                          {monthExpense > 0 && <span className="expense-badge">-{ccy} {monthExpense.toFixed(2)}</span>}
+                        </span>
+                      </div>
+
+                      {!collapsed && (
+                        <table className="receipts-table">
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Vendor</th>
+                              <th>Amount</th>
+                              <th>Tax</th>
+                              <th>ABN</th>
+                              <th>Type</th>
+                              <th>Status</th>
+                              <th>File</th>
+                              <th>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {monthReceipts.map(r => (
+                              editingReceiptId === r.id ? (
+                                <tr key={r.id} className="edit-row">
+                                  <td><input className="edit-input" value={editForm.date || ""} onChange={e => setEditForm(p => ({ ...p, date: e.target.value }))} placeholder="YYYY-MM-DD" /></td>
+                                  <td><input className="edit-input" value={editForm.vendor || ""} onChange={e => setEditForm(p => ({ ...p, vendor: e.target.value }))} placeholder="Vendor" /></td>
+                                  <td>
+                                    <input className="edit-input edit-input-sm" type="number" value={editForm.cost ?? ""} onChange={e => setEditForm(p => ({ ...p, cost: parseFloat(e.target.value) || undefined }))} placeholder="Amount" />
+                                    <input className="edit-input edit-input-xs" value={editForm.currency || ""} onChange={e => setEditForm(p => ({ ...p, currency: e.target.value }))} placeholder="CCY" maxLength={3} />
+                                  </td>
+                                  <td><input className="edit-input edit-input-sm" type="number" value={editForm.tax ?? ""} onChange={e => setEditForm(p => ({ ...p, tax: parseFloat(e.target.value) || undefined }))} placeholder="Tax" /></td>
+                                  <td><input className="edit-input" value={editForm.abn || ""} onChange={e => setEditForm(p => ({ ...p, abn: e.target.value }))} placeholder="ABN" /></td>
+                                  <td>
+                                    <select className="edit-select" value={editForm.transaction_type} onChange={e => setEditForm(p => ({ ...p, transaction_type: e.target.value as "income" | "expense" }))}>
+                                      <option value="income">Income</option>
+                                      <option value="expense">Expense</option>
+                                    </select>
+                                  </td>
+                                  <td>
+                                    <select className="edit-select" value={editForm.status} onChange={e => setEditForm(p => ({ ...p, status: e.target.value }))}>
+                                      <option value="pending_confirmation">Pending</option>
+                                      <option value="confirmed">Confirmed</option>
+                                      <option value="rejected">Rejected</option>
+                                      <option value="error">Error</option>
+                                    </select>
+                                  </td>
+                                  <td>
+                                    {r.file_url ? (
+                                      <button className="file-link-btn" onClick={() => openPreview(r.file_url!)}>View</button>
+                                    ) : r.drive_file_id ? (
+                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="file-link-btn">Drive</a>
+                                    ) : "—"}
+                                  </td>
+                                  <td className="action-cell">
+                                    <button className="btn-save btn-sm" onClick={() => saveEdit(r)}>Save</button>
+                                    <button className="btn-cancel btn-sm" onClick={() => setEditingReceiptId(null)}>Cancel</button>
+                                  </td>
+                                </tr>
+                              ) : (
+                                <tr key={r.id}>
+                                  <td>{r.date || "—"}</td>
+                                  <td>{r.vendor || "—"}</td>
+                                  <td className="amount">{r.cost != null ? `${r.currency} ${r.cost.toFixed(2)}` : "—"}</td>
+                                  <td>{r.tax != null ? `${r.currency} ${r.tax.toFixed(2)}` : "—"}</td>
+                                  <td>{r.abn || "—"}</td>
+                                  <td>
+                                    <button className={`type-btn ${r.transaction_type}`} onClick={() => toggleType(r)} title="Click to toggle">
+                                      {r.transaction_type === "income" ? "↑ Income" : "↓ Expense"}
+                                    </button>
+                                  </td>
+                                  <td><span className={`status-badge status-${r.status}`}>{r.status.replace(/_/g, " ")}</span></td>
+                                  <td>
+                                    {r.file_url ? (
+                                      <button className="file-link-btn" onClick={() => openPreview(r.file_url!)}>View</button>
+                                    ) : r.drive_file_id ? (
+                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="file-link-btn">Drive</a>
+                                    ) : "—"}
+                                  </td>
+                                  <td className="action-cell">
+                                    <button className="btn-edit" onClick={() => startEdit(r)}>Edit</button>
+                                  </td>
+                                </tr>
+                              )
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )
+                })
+              })()}
             </div>
           </>
         )}

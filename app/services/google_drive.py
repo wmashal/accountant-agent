@@ -137,19 +137,27 @@ def download_file(file_id: str) -> tuple[bytes, str]:
     return buf.getvalue(), content_type
 
 
-async def move_to_processed(file_id: str, parent_folder_id: str) -> None:
-    """Move a file to a 'processed/' subfolder inside parent_folder_id."""
+async def move_to_processed(file_id: str, parent_folder_id: str, receipt_date: str = "") -> None:
+    """Move a file to a 'processed/YYYY-MM/' subfolder inside parent_folder_id."""
     try:
         svc = _service()
+        # Determine YYYY-MM from receipt date, fall back to current month
+        if receipt_date and len(receipt_date) >= 7:
+            month_label = receipt_date[:7]  # e.g. "2026-06"
+        else:
+            from datetime import datetime
+            month_label = datetime.utcnow().strftime("%Y-%m")
+
         processed_id = await _get_or_create_folder(svc, "processed", parent_folder_id)
+        month_id = await _get_or_create_folder(svc, month_label, processed_id)
         svc.files().update(
             fileId=file_id,
-            addParents=processed_id,
+            addParents=month_id,
             removeParents=parent_folder_id,
             supportsAllDrives=True,
             fields="id, parents",
         ).execute()
-        logger.info(f"Moved file {file_id} → processed/")
+        logger.info(f"Moved file {file_id} → processed/{month_label}/")
     except Exception as e:
         logger.warning(f"Could not move file {file_id} to processed/: {e}")
 
