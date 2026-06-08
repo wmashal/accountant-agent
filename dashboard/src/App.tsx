@@ -95,7 +95,7 @@ export default function App() {
   const openPreview = (url: string) => {
     const isPdf = url.toLowerCase().endsWith(".pdf")
     setPreviewIsPdf(isPdf)
-    setPreviewUrl(`/files/${url.replace("/files/", "")}`)
+    setPreviewUrl(url.startsWith("http") ? url : `/files/${url.replace("/files/", "")}`)
   }
 
   const submitAddCustomer = async (e: React.FormEvent) => {
