@@ -11,6 +11,27 @@ This guide covers deploying the Accountant Agent to GCP using:
 
 ---
 
+## Two Connectivity Options for Cloud SQL
+
+### Option A — Public IP + Cloud SQL Auth Proxy (POC / default in this guide)
+
+Cloud SQL gets a public IP. Cloud Run connects via the built-in Cloud SQL Auth Proxy using the instance connection name. No VPC, no VPC connector needed.
+
+- Simpler setup
+- No VPC connector cost (~$6/mo saved)
+- Secure — Auth Proxy uses IAM + TLS, no password exposed to internet
+- **This is what the steps below use**
+
+### Option B — Private IP + VPC (Production recommended)
+
+Cloud SQL has no public IP. Cloud Run reaches it through a private VPC via a Serverless VPC Access Connector.
+
+- More secure (database not reachable from internet at all)
+- Extra cost: VPC Access Connector ~$6/mo
+- See [Production VPC Setup](#production-vpc-setup-option-b) section at the bottom
+
+---
+
 ## Architecture on GCP
 
 ```
@@ -21,6 +42,8 @@ Internet
   │                    ┌────────┼────────┐
   │               Cloud SQL  Redis CR  GCS bucket
   │              (Postgres)  (session)  (files)
+  │              public IP
+  │              via Auth Proxy
   │
   └── Browser  →  Cloud Run: accountant-dashboard
                         │
@@ -28,7 +51,7 @@ Internet
 ```
 
 - API and Dashboard are public Cloud Run services
-- Cloud SQL is private (VPC only)
+- Cloud SQL has a public IP but is protected by Cloud SQL Auth Proxy (IAM auth)
 - Redis runs as its own Cloud Run service (internal ingress only)
 - GCS bucket serves receipt files publicly (images/PDFs for the dashboard)
 - All secrets stored in Secret Manager
@@ -108,34 +131,21 @@ docker push ${REGISTRY}/dashboard:latest
 
 ---
 
-## Step 3 — VPC Network (for Cloud SQL)
+## Step 3 — VPC Network (Option B / Production only)
 
-Cloud SQL requires a private VPC. Cloud Run connects via Serverless VPC Access Connector.
-
-```bash
-# Create VPC
-gcloud compute networks create accountant-vpc \
-  --subnet-mode=auto
-
-# Create VPC Access Connector (allows Cloud Run to reach Cloud SQL private IP)
-gcloud compute networks vpc-access connectors create accountant-connector \
-  --network=accountant-vpc \
-  --region=${REGION} \
-  --range=10.8.0.0/28
-```
+> **Skip this step for POC.** Only needed if using private IP for Cloud SQL (Option B). See [Production VPC Setup](#production-vpc-setup-option-b) at the bottom.
 
 ---
 
 ## Step 4 — Cloud SQL (Postgres)
 
 ```bash
-# Create Postgres 16 instance (private VPC only, no public IP)
+# Create Postgres 16 instance with public IP (POC — simpler, no VPC needed)
 gcloud sql instances create accountant-db \
   --database-version=POSTGRES_16 \
-  --tier=db-f1-micro \
+  --tier=db-g1-small \
+  --edition=ENTERPRISE \
   --region=${REGION} \
-  --network=accountant-vpc \
-  --no-assign-ip \
   --storage-type=SSD \
   --storage-size=10GB
 
@@ -148,15 +158,19 @@ gcloud sql users create accountant \
   --instance=accountant-db \
   --password=CHANGE_THIS_PASSWORD
 
-# Get the private IP (save this — needed for DATABASE_URL)
+# Get the instance connection name (needed for DATABASE_URL)
 gcloud sql instances describe accountant-db \
-  --format="value(ipAddresses[0].ipAddress)"
+  --format="value(connectionName)"
 ```
 
-**DATABASE_URL format:**
+The connection name looks like: `accountant-agent-498810:us-central1:accountant-db`
+
+**DATABASE_URL format for Cloud Run (Auth Proxy via Unix socket):**
 ```
-postgresql+asyncpg://accountant:CHANGE_THIS_PASSWORD@<PRIVATE_IP>/accountant
+postgresql+asyncpg://accountant:CHANGE_THIS_PASSWORD@/accountant?host=/cloudsql/accountant-agent-498810:us-central1:accountant-db
 ```
+
+> Cloud Run has built-in Cloud SQL Auth Proxy support. Adding `--add-cloudsql-instances` to the deploy command makes the proxy socket available automatically — no sidecar needed, connection is IAM-authenticated and encrypted.
 
 ### DB Migration
 
@@ -307,8 +321,7 @@ gcloud run deploy accountant-api \
   --memory=1Gi \
   --cpu=1 \
   --timeout=300 \
-  --vpc-connector=accountant-connector \
-  --vpc-egress=private-ranges-only \
+  --add-cloudsql-instances=accountant-agent-498810:us-central1:accountant-db \
   --set-secrets=\
 TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,\
 TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,\
@@ -543,3 +556,72 @@ gcloud run deploy accountant-dashboard --image=${REGISTRY}/dashboard:latest --re
 **Background tasks (auto-confirm, Drive poller) dying**
 - `--min-instances=1` on the API service prevents container shutdown between requests
 - Without this, asyncio background tasks are killed when the container idles
+
+---
+
+## Production VPC Setup (Option B)
+
+Use this instead of the public IP approach when you want Cloud SQL to have **no public IP at all**. Costs ~$6/mo extra for the VPC Access Connector.
+
+### 1. Create VPC and connector
+
+```bash
+# Create VPC network
+gcloud compute networks create accountant-vpc \
+  --subnet-mode=auto
+
+# Allocate IP range for Google-managed services (required for Cloud SQL private IP)
+gcloud compute addresses create google-managed-services-accountant-vpc \
+  --global \
+  --purpose=VPC_PEERING \
+  --prefix-length=16 \
+  --network=accountant-vpc
+
+# Peer with Google service networking
+gcloud services vpc-peerings connect \
+  --service=servicenetworking.googleapis.com \
+  --ranges=google-managed-services-accountant-vpc \
+  --network=accountant-vpc
+
+# Create Serverless VPC Access Connector (allows Cloud Run → Cloud SQL)
+gcloud compute networks vpc-access connectors create accountant-connector \
+  --network=accountant-vpc \
+  --region=${REGION} \
+  --range=10.8.0.0/28
+```
+
+### 2. Create Cloud SQL with private IP only
+
+```bash
+gcloud sql instances create accountant-db \
+  --database-version=POSTGRES_16 \
+  --tier=db-g1-small \
+  --edition=ENTERPRISE \
+  --region=${REGION} \
+  --network=accountant-vpc \
+  --no-assign-ip \
+  --storage-type=SSD \
+  --storage-size=10GB
+
+# Get private IP
+gcloud sql instances describe accountant-db \
+  --format="value(ipAddresses[0].ipAddress)"
+```
+
+**DATABASE_URL format (direct TCP to private IP):**
+```
+postgresql+asyncpg://accountant:CHANGE_THIS_PASSWORD@<PRIVATE_IP>/accountant
+```
+
+### 3. Deploy API with VPC connector (replace Step 10)
+
+Replace `--add-cloudsql-instances` with `--vpc-connector` in the API deploy command:
+
+```bash
+gcloud run deploy accountant-api \
+  ... \
+  --vpc-connector=accountant-connector \
+  --vpc-egress=private-ranges-only \
+  # (remove --add-cloudsql-instances)
+  ...
+```
