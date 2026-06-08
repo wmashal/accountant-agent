@@ -7,12 +7,13 @@ from pydantic import BaseModel
 
 from app.db import get_session
 from app.models.receipt import Customer, Receipt
+from app.services.db_service import create_customer
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/dashboard")
 
 
-# --- Response schemas ---
+# --- Request / Response schemas ---
 
 class CustomerSummary(BaseModel):
     id: int
@@ -20,6 +21,9 @@ class CustomerSummary(BaseModel):
     display_name: Optional[str]
     company_name: Optional[str]
     company_id: Optional[str]
+    drive_folder_id: Optional[str]
+    drive_share_link: Optional[str]
+    source: str
     total_receipts: int
     total_income: float
     total_expense: float
@@ -40,6 +44,7 @@ class ReceiptOut(BaseModel):
     transaction_type: str
     status: str
     file_url: Optional[str]
+    drive_file_id: Optional[str]
     created_at: str
 
 
@@ -60,7 +65,74 @@ class UpdateCustomerProfileRequest(BaseModel):
     company_id: Optional[str] = None
 
 
+class CreateCustomerRequest(BaseModel):
+    display_name: str
+    company_name: Optional[str] = None
+    company_id: Optional[str] = None
+    phone_number: Optional[str] = None
+
+
+# --- Helpers ---
+
+def _drive_share_link(drive_folder_id: Optional[str]) -> Optional[str]:
+    if not drive_folder_id:
+        return None
+    return f"https://drive.google.com/drive/folders/{drive_folder_id}"
+
+
+def _customer_summary(c: Customer, receipts: list) -> CustomerSummary:
+    confirmed = [r for r in receipts if r.status == "confirmed"]
+    income = sum(r.cost or 0 for r in confirmed if r.transaction_type == "income")
+    expense = sum(r.cost or 0 for r in confirmed if r.transaction_type == "expense")
+    return CustomerSummary(
+        id=c.id,
+        phone_number=c.phone_number,
+        display_name=c.display_name,
+        company_name=c.company_name,
+        company_id=c.company_id,
+        drive_folder_id=c.drive_folder_id,
+        drive_share_link=_drive_share_link(c.drive_folder_id),
+        source=c.source,
+        total_receipts=len(receipts),
+        total_income=round(income, 2),
+        total_expense=round(expense, 2),
+        created_at=c.created_at.isoformat(),
+    )
+
+
 # --- Endpoints ---
+
+@router.post("/customers", response_model=CustomerSummary)
+async def create_customer_endpoint(
+    body: CreateCustomerRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Create a customer from the dashboard and provision a Drive folder if configured."""
+    from app.config import get_settings
+    settings = get_settings()
+
+    drive_folder_id = None
+    if settings.google_drive_folder_id and settings.google_service_account_file:
+        try:
+            from app.services.google_drive import create_customer_folder
+            drive_folder_id = await create_customer_folder(
+                display_name=body.display_name,
+                company_id=body.company_id,
+                root_folder_id=settings.google_drive_folder_id,
+            )
+        except Exception as e:
+            logger.warning(f"Drive folder creation failed (non-fatal): {e}")
+
+    customer = await create_customer(
+        session=session,
+        display_name=body.display_name,
+        company_name=body.company_name,
+        company_id=body.company_id,
+        phone_number=body.phone_number,
+        drive_folder_id=drive_folder_id,
+    )
+    return _customer_summary(customer, [])
+
 
 @router.get("/customers", response_model=list[CustomerSummary])
 async def list_customers(session: AsyncSession = Depends(get_session)):
@@ -71,20 +143,7 @@ async def list_customers(session: AsyncSession = Depends(get_session)):
     for c in customers:
         r = await session.execute(select(Receipt).where(Receipt.customer_id == c.id))
         receipts = r.scalars().all()
-        confirmed = [rec for rec in receipts if rec.status == "confirmed"]
-        income = sum(rec.cost or 0 for rec in confirmed if rec.transaction_type == "income")
-        expense = sum(rec.cost or 0 for rec in confirmed if rec.transaction_type == "expense")
-        summaries.append(CustomerSummary(
-            id=c.id,
-            phone_number=c.phone_number,
-            display_name=c.display_name,
-            company_name=c.company_name,
-            company_id=c.company_id,
-            total_receipts=len(receipts),
-            total_income=round(income, 2),
-            total_expense=round(expense, 2),
-            created_at=c.created_at.isoformat(),
-        ))
+        summaries.append(_customer_summary(c, receipts))
     return summaries
 
 
@@ -111,6 +170,7 @@ async def list_customer_receipts(customer_id: int, session: AsyncSession = Depen
             transaction_type=r.transaction_type,
             status=r.status,
             file_url=r.file_url,
+            drive_file_id=r.drive_file_id,
             created_at=r.created_at.isoformat(),
         )
         for r in receipts
@@ -162,6 +222,7 @@ async def update_receipt(
         transaction_type=receipt.transaction_type,
         status=receipt.status,
         file_url=receipt.file_url,
+        drive_file_id=receipt.drive_file_id,
         created_at=receipt.created_at.isoformat(),
     )
 

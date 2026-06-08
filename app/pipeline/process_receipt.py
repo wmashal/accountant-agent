@@ -6,7 +6,7 @@ from app.pipeline.ocr import fetch_media, ocr_pdf
 from app.pipeline.extract import extract
 from app.pipeline.normalize import normalize
 from app.services.local_storage import upload_receipt
-from app.services.db_service import upsert_receipt, update_receipt_status
+from app.services.db_service import upsert_receipt, upsert_receipt_from_drive, update_receipt_status
 from app.services.twilio_client import send_summary, send_error, send_confirm_prompt
 from app.services.redis_client import get_redis
 from app.db import SessionLocal
@@ -158,3 +158,72 @@ async def process_receipt(
             logger.warning(f"PDF page split failed ({e}), processing as single receipt")
 
     await process_single_receipt(message_sid, from_number, file_bytes, content_type)
+
+
+async def process_single_receipt_from_drive(
+    file_bytes: bytes,
+    content_type: str,
+    customer,
+    drive_file_id: str,
+):
+    """Process a receipt file sourced from Google Drive.
+    No Twilio messages, no Redis counter — auto-confirmed immediately.
+    """
+    import uuid
+    message_sid = f"drive_{drive_file_id[:40]}"
+    logger.info(f"Processing Drive receipt: file_id={drive_file_id} customer={customer.id} type={content_type}")
+
+    if "pdf" in content_type:
+        try:
+            from pypdf import PdfReader, PdfWriter
+            reader = PdfReader(io.BytesIO(file_bytes))
+            num_pages = len(reader.pages)
+            if num_pages > 1:
+                logger.info(f"Multi-page Drive PDF: {num_pages} pages (file_id={drive_file_id})")
+                for page_num in range(num_pages):
+                    writer = PdfWriter()
+                    writer.add_page(reader.pages[page_num])
+                    buf = io.BytesIO()
+                    writer.write(buf)
+                    page_bytes = buf.getvalue()
+                    page_sid = f"drive_{drive_file_id[:36]}_p{page_num + 1}"
+                    await _process_drive_single_page(page_bytes, content_type, customer, drive_file_id, page_sid)
+                return
+        except Exception as e:
+            logger.warning(f"Drive PDF split failed ({e}), processing as single page")
+
+    await _process_drive_single_page(file_bytes, content_type, customer, drive_file_id, message_sid)
+
+
+async def _process_drive_single_page(
+    file_bytes: bytes,
+    content_type: str,
+    customer,
+    drive_file_id: str,
+    message_sid: str,
+):
+    """Internal: extract + save one Drive receipt page."""
+    async with SessionLocal() as session:
+        try:
+            raw_result, model = await extract(file_bytes, content_type, ocr_text=None)
+            logger.info(f"Drive extraction: model={model} vendor={raw_result.get('vendor')} cost={raw_result.get('cost')}")
+
+            data = normalize(raw_result, extraction_model=model, raw_ocr=None)
+
+            # Store file locally (same as WhatsApp path)
+            phone_key = f"drive_{customer.id}"
+            file_url = await upload_receipt(file_bytes, phone_key, message_sid, content_type)
+
+            # Upsert — auto-confirmed, no confirmation step needed
+            await upsert_receipt_from_drive(
+                session=session,
+                message_sid=message_sid,
+                customer_id=customer.id,
+                data=data,
+                file_url=file_url,
+                drive_file_id=drive_file_id,
+            )
+            logger.info(f"Drive receipt saved: {message_sid}")
+
+        except Exception as e:
+            logger.error(f"Failed to process Drive receipt {message_sid}: {e}", exc_info=True)

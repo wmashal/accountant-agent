@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
-import { api, CustomerSummary, Receipt } from "./api"
+import { api, CustomerSummary, Receipt, CreateCustomerData } from "./api"
 import "./App.css"
 
 export default function App() {
@@ -20,6 +20,12 @@ export default function App() {
   // File preview modal
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewIsPdf, setPreviewIsPdf] = useState(false)
+
+  // Add Customer modal
+  const [showAddCustomer, setShowAddCustomer] = useState(false)
+  const [addForm, setAddForm] = useState<CreateCustomerData>({ display_name: "", company_name: "", company_id: "", phone_number: "" })
+  const [addLoading, setAddLoading] = useState(false)
+  const [newCustomerDriveLink, setNewCustomerDriveLink] = useState<string | null>(null)
 
   const loadCustomers = useCallback(async () => {
     setLoading(true)
@@ -90,6 +96,31 @@ export default function App() {
     setPreviewUrl(`/files/${url.replace("/files/", "")}`)
   }
 
+  const submitAddCustomer = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setAddLoading(true)
+    try {
+      const payload: CreateCustomerData = {
+        display_name: addForm.display_name,
+        company_name: addForm.company_name || undefined,
+        company_id: addForm.company_id || undefined,
+        phone_number: addForm.phone_number || undefined,
+      }
+      const created = await api.createCustomer(payload)
+      setNewCustomerDriveLink(created.drive_share_link)
+      await loadCustomers()
+      setAddForm({ display_name: "", company_name: "", company_id: "", phone_number: "" })
+    } finally {
+      setAddLoading(false)
+    }
+  }
+
+  const closeAddCustomer = () => {
+    setShowAddCustomer(false)
+    setNewCustomerDriveLink(null)
+    setAddForm({ display_name: "", company_name: "", company_id: "", phone_number: "" })
+  }
+
   const filteredCustomers = customers.filter(c => {
     if (!search) return true
     const q = search.toLowerCase()
@@ -104,6 +135,12 @@ export default function App() {
   const totalIncome = receipts.filter(r => r.transaction_type === "income" && r.status === "confirmed").reduce((s, r) => s + (r.cost || 0), 0)
   const totalExpense = receipts.filter(r => r.transaction_type === "expense" && r.status === "confirmed").reduce((s, r) => s + (r.cost || 0), 0)
 
+  const sourceLabel = (source: string) => {
+    if (source === "whatsapp") return <span className="source-badge source-whatsapp" title="WhatsApp">📱</span>
+    if (source === "drive") return <span className="source-badge source-drive" title="Google Drive">📁</span>
+    return <><span className="source-badge source-whatsapp" title="WhatsApp">📱</span><span className="source-badge source-drive" title="Google Drive">📁</span></>
+  }
+
   return (
     <div className="layout">
       {/* File Preview Modal */}
@@ -115,6 +152,65 @@ export default function App() {
               <iframe src={previewUrl} title="Receipt PDF" className="modal-iframe" />
             ) : (
               <img src={previewUrl} alt="Receipt" className="modal-img" />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Add Customer Modal */}
+      {showAddCustomer && (
+        <div className="modal-overlay" onClick={closeAddCustomer}>
+          <div className="add-customer-modal" onClick={e => e.stopPropagation()}>
+            <button className="modal-close" onClick={closeAddCustomer}>✕</button>
+            <h3>Add Customer</h3>
+            {newCustomerDriveLink ? (
+              <div className="drive-success">
+                <p>Customer created! Share their Google Drive folder:</p>
+                <a href={newCustomerDriveLink} target="_blank" rel="noreferrer" className="drive-link">
+                  📁 Open Drive Folder
+                </a>
+                <p className="drive-hint">Ask the customer to upload their receipts to this folder.</p>
+                <button className="btn-save" onClick={closeAddCustomer}>Done</button>
+              </div>
+            ) : (
+              <form onSubmit={submitAddCustomer} className="add-customer-form">
+                <label>Full Name *
+                  <input
+                    required
+                    autoFocus
+                    value={addForm.display_name}
+                    onChange={e => setAddForm(p => ({ ...p, display_name: e.target.value }))}
+                    placeholder="e.g. Wael Mashal"
+                  />
+                </label>
+                <label>Company Name
+                  <input
+                    value={addForm.company_name}
+                    onChange={e => setAddForm(p => ({ ...p, company_name: e.target.value }))}
+                    placeholder="e.g. Mashal Ltd"
+                  />
+                </label>
+                <label>Company ID / Registration No.
+                  <input
+                    value={addForm.company_id}
+                    onChange={e => setAddForm(p => ({ ...p, company_id: e.target.value }))}
+                    placeholder="e.g. 12345"
+                  />
+                </label>
+                <label>WhatsApp Number (optional)
+                  <input
+                    value={addForm.phone_number}
+                    onChange={e => setAddForm(p => ({ ...p, phone_number: e.target.value }))}
+                    placeholder="+61400000000"
+                  />
+                </label>
+                <div className="add-customer-btns">
+                  <button type="submit" className="btn-save" disabled={addLoading}>
+                    {addLoading ? "Creating…" : "Create Customer"}
+                  </button>
+                  <button type="button" className="btn-cancel" onClick={closeAddCustomer}>Cancel</button>
+                </div>
+              </form>
             )}
           </div>
         </div>
@@ -149,8 +245,11 @@ export default function App() {
                 className={`customer-item ${selected && selected.id === c.id ? "active" : ""}`}
                 onClick={() => selectCustomer(c)}
               >
-                <div className="customer-name">
-                  {c.display_name || c.phone_number}
+                <div className="customer-item-top">
+                  <div className="customer-name">
+                    {c.display_name || c.phone_number}
+                  </div>
+                  <div className="customer-source">{sourceLabel(c.source)}</div>
                 </div>
                 {c.company_name && (
                   <div className="customer-company">{c.company_name}{c.company_id ? ` · ${c.company_id}` : ""}</div>
@@ -165,6 +264,11 @@ export default function App() {
             ))}
           </ul>
         )}
+        <div className="sidebar-footer">
+          <button className="add-customer-btn" onClick={() => setShowAddCustomer(true)}>
+            + Add Customer
+          </button>
+        </div>
       </aside>
 
       <main className="main">
@@ -208,7 +312,11 @@ export default function App() {
                   </div>
                 ) : (
                   <div onClick={() => setEditingProfile(true)} className="customer-info-click" title="Click to edit">
-                    <h2>{selected.display_name || selected.phone_number} <span className="edit-hint">✎</span></h2>
+                    <h2>
+                      {selected.display_name || selected.phone_number}
+                      <span className="edit-hint"> ✎</span>
+                      <span className="header-source">{sourceLabel(selected.source)}</span>
+                    </h2>
                     {selected.company_name && (
                       <div className="header-company">
                         {selected.company_name}
@@ -216,6 +324,17 @@ export default function App() {
                       </div>
                     )}
                     <p className="phone-sub">{selected.phone_number}</p>
+                    {selected.drive_share_link && (
+                      <a
+                        href={selected.drive_share_link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="drive-folder-link"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        📁 Drive Folder
+                      </a>
+                    )}
                   </div>
                 )}
               </div>
@@ -289,6 +408,8 @@ export default function App() {
                         <td>
                           {r.file_url ? (
                             <button className="file-link-btn" onClick={() => openPreview(r.file_url!)}>View</button>
+                          ) : r.drive_file_id ? (
+                            <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="file-link-btn">Drive</a>
                           ) : "—"}
                         </td>
                         <td className="action-cell">
@@ -324,6 +445,8 @@ export default function App() {
                             <button className="file-link-btn" onClick={() => openPreview(r.file_url!)}>
                               View
                             </button>
+                          ) : r.drive_file_id ? (
+                            <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="file-link-btn">Drive</a>
                           ) : "—"}
                         </td>
                         <td className="action-cell">

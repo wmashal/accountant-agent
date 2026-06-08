@@ -115,3 +115,31 @@
 .modal-close:hover { background: rgba(0,0,0,0.4); }
 .modal-img { display: block; max-width: 85vw; max-height: 85vh; border-radius: 10px; }
 .modal-iframe { display: block; width: 80vw; height: 80vh; border: none; border-radius: 10px; }
+
+/* Add Customer Modal */
+.add-customer-modal { background: #fff; border-radius: 14px; padding: 28px 32px; width: 400px; max-width: 95vw; box-shadow: 0 20px 60px rgba(0,0,0,0.35); position: relative; }
+.add-customer-modal h3 { font-size: 18px; font-weight: 700; margin-bottom: 20px; color: #111827; }
+.add-customer-form { display: flex; flex-direction: column; gap: 14px; }
+.add-customer-form label { font-size: 12px; color: #6b7280; display: flex; flex-direction: column; gap: 4px; font-weight: 500; }
+.add-customer-form input { border: 1px solid #d1d5db; border-radius: 7px; padding: 9px 12px; font-size: 14px; outline: none; color: #111827; }
+.add-customer-form input:focus { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.15); }
+.add-customer-btns { display: flex; gap: 10px; margin-top: 6px; }
+.drive-success { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.drive-success p { font-size: 14px; color: #374151; margin: 0; }
+.drive-link { display: inline-flex; align-items: center; gap: 6px; background: #f0fdf4; border: 1px solid #86efac; color: #16a34a; font-size: 14px; font-weight: 600; padding: 8px 16px; border-radius: 8px; text-decoration: none; }
+.drive-link:hover { background: #dcfce7; }
+.drive-hint { font-size: 12px; color: #9ca3af; margin: 0; }
+
+/* Sidebar footer */
+.sidebar-footer { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.08); margin-top: auto; }
+.add-customer-btn { width: 100%; background: #6366f1; color: #fff; border: none; border-radius: 8px; padding: 10px 0; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+.add-customer-btn:hover { background: #4f46e5; }
+
+/* Source badges */
+.customer-item-top { display: flex; align-items: center; justify-content: space-between; }
+.customer-source { display: flex; gap: 2px; }
+.source-badge { font-size: 13px; line-height: 1; }
+.header-source { margin-left: 8px; }
+.drive-folder-link { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #6366f1; text-decoration: none; margin-top: 4px; font-weight: 500; }
+.drive-folder-link:hover { text-decoration: underline; color: #4f46e5; }
+

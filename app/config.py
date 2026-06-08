@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # App
     environment: str = "development"
 
+    # Drive poller interval (seconds) — 30s for dev, increase for prod
+    drive_poll_interval_seconds: int = 30
+
     class Config:
         env_file = ".env"
 

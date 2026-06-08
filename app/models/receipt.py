@@ -18,6 +18,8 @@ class Customer(Base):
     display_name: Mapped[Optional[str]] = mapped_column(sa.String(200), nullable=True)
     company_name: Mapped[Optional[str]] = mapped_column(sa.String(200), nullable=True)
     company_id: Mapped[Optional[str]] = mapped_column(sa.String(100), nullable=True)
+    drive_folder_id: Mapped[Optional[str]] = mapped_column(sa.String(200), nullable=True)
+    source: Mapped[str] = mapped_column(sa.String(20), default="whatsapp")
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -44,6 +46,7 @@ class Receipt(Base):
     transaction_type: Mapped[str] = mapped_column(sa.String(20), default="expense")
     status: Mapped[str] = mapped_column(sa.String(30), default="processing")
     file_url: Mapped[Optional[str]] = mapped_column(sa.String(500), nullable=True)
+    drive_file_id: Mapped[Optional[str]] = mapped_column(sa.String(200), nullable=True, index=True)
 
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),

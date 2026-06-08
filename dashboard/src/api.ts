@@ -6,6 +6,9 @@ export interface CustomerSummary {
   display_name: string | null
   company_name: string | null
   company_id: string | null
+  drive_folder_id: string | null
+  drive_share_link: string | null
+  source: string
   total_receipts: number
   total_income: number
   total_expense: number
@@ -26,12 +29,27 @@ export interface Receipt {
   transaction_type: 'income' | 'expense'
   status: string
   file_url: string | null
+  drive_file_id: string | null
   created_at: string
+}
+
+export interface CreateCustomerData {
+  display_name: string
+  company_name?: string
+  company_id?: string
+  phone_number?: string
 }
 
 export const api = {
   getCustomers: (): Promise<CustomerSummary[]> =>
     fetch(`${BASE}/customers`).then(r => r.json()),
+
+  createCustomer: (data: CreateCustomerData): Promise<CustomerSummary> =>
+    fetch(`${BASE}/customers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
 
   getReceipts: (customerId: number): Promise<Receipt[]> =>
     fetch(`${BASE}/customers/${customerId}/receipts`).then(r => r.json()),
