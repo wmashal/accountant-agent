@@ -1,0 +1,6 @@
+- **Accountant Agent**
+  - [Home](/)
+  - [Architecture Design](architecture-design.md)
+  - [Component Breakdown](component-breakdown.md)
+  - [Implementation Plan](implementation-plan.md)
+  - [Deploy to GCP](deploy-gcp.md)

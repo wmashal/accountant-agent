@@ -1,0 +1,34 @@
+# Environment / secrets
+.env
+*.json
+
+# But keep .env.example
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Node
+node_modules/
+dashboard/node_modules/
+dashboard/dist/
+
+# macOS
+.DS_Store
+
+# Docker volumes (local data)
+receipts_data/
+postgres_data/
+
+# IDE
+.idea/
+.vscode/
