@@ -9,6 +9,8 @@ logger = logging.getLogger(__name__)
 
 def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, default_currency: str = "USD", customer_identity: set[str] | None = None) -> ReceiptData:
     vendor = str(raw.get("vendor", "Unknown")).strip()
+    payer = str(raw.get("payer") or "").strip()
+    receipt_number = str(raw.get("receipt_number") or "").strip() or None
     cost = _parse_float(raw.get("cost"))
     receipt_language = raw.get("receipt_language", "unknown")
 
@@ -22,11 +24,13 @@ def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, d
     currency = default_currency
 
     # --- Transaction type ---
-    # If vendor text contains the customer's own company_id or company_name → income
+    # Check vendor, payer, and full raw text for customer's company_id / company_name / display_name
     transaction_type = "expense"
     if customer_identity:
-        vendor_lower = vendor.lower()
-        if any(identity.lower() in vendor_lower for identity in customer_identity if identity):
+        search_text = vendor.lower() + " " + payer.lower()
+        if raw_ocr:
+            search_text += " " + raw_ocr.lower()
+        if any(identity.lower() in search_text for identity in customer_identity if identity):
             transaction_type = "income"
 
     # --- Date ---
@@ -46,6 +50,7 @@ def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, d
         date=date,
         abn=abn,
         abn_raw=abn_raw if not abn_valid and abn_raw else None,
+        receipt_number=receipt_number,
         receipt_language=receipt_language,
         extraction_model=extraction_model,
         transaction_type=transaction_type,

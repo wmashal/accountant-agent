@@ -40,6 +40,7 @@ class ReceiptOut(BaseModel):
     currency: str
     date: Optional[str]
     abn: Optional[str]
+    receipt_number: Optional[str]
     receipt_language: Optional[str]
     extraction_model: Optional[str]
     transaction_type: str
@@ -171,6 +172,7 @@ async def list_customer_receipts(customer_id: int, session: AsyncSession = Depen
             currency=r.currency,
             date=r.date,
             abn=r.abn,
+            receipt_number=r.receipt_number,
             receipt_language=r.receipt_language,
             extraction_model=r.extraction_model,
             transaction_type=r.transaction_type,
@@ -223,6 +225,7 @@ async def update_receipt(
         currency=receipt.currency,
         date=receipt.date,
         abn=receipt.abn,
+        receipt_number=receipt.receipt_number,
         receipt_language=receipt.receipt_language,
         extraction_model=receipt.extraction_model,
         transaction_type=receipt.transaction_type,
@@ -233,7 +236,37 @@ async def update_receipt(
     )
 
 
-@router.patch("/customers/{customer_id}/name")
+@router.delete("/receipts/{receipt_id}", status_code=204)
+async def delete_receipt(
+    receipt_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(Receipt).where(Receipt.id == receipt_id))
+    receipt = result.scalar_one_or_none()
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    file_url = receipt.file_url
+    drive_file_id = receipt.drive_file_id
+
+    await session.delete(receipt)
+    await session.commit()
+
+    # Delete from GCS
+    if file_url and file_url.startswith("https://storage.googleapis.com/"):
+        from app.config import get_settings
+        settings = get_settings()
+        if settings.gcs_bucket_name:
+            from app.services.gcs_storage import delete_receipt as gcs_delete
+            await gcs_delete(file_url, settings.gcs_bucket_name)
+
+    # Delete from Drive
+    if drive_file_id:
+        from app.services.google_drive import delete_drive_file
+        await delete_drive_file(drive_file_id)
+
+
+
 async def update_customer_name(
     customer_id: int,
     body: dict,

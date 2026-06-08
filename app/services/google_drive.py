@@ -1,3 +1,4 @@
+import asyncio
 import io
 import logging
 import re
@@ -135,6 +136,39 @@ def download_file(file_id: str) -> tuple[bytes, str]:
     while not done:
         _, done = downloader.next_chunk()
     return buf.getvalue(), content_type
+
+
+async def delete_drive_file(file_id: str) -> None:
+    """Move a Drive file to a 'deleted/' subfolder (service account can't trash user-owned files)."""
+    try:
+        loop = asyncio.get_event_loop()
+        svc = _service()
+
+        # Get current parents
+        meta = await loop.run_in_executor(
+            None,
+            lambda: svc.files().get(fileId=file_id, fields="parents", supportsAllDrives=True).execute()
+        )
+        parents = meta.get("parents", [])
+        parent_id = parents[0] if parents else None
+
+        if parent_id:
+            deleted_id = await _get_or_create_folder(svc, "deleted", parent_id)
+            await loop.run_in_executor(
+                None,
+                lambda: svc.files().update(
+                    fileId=file_id,
+                    addParents=deleted_id,
+                    removeParents=parent_id,
+                    supportsAllDrives=True,
+                    fields="id, parents",
+                ).execute()
+            )
+            logger.info(f"Moved Drive file {file_id} → deleted/")
+        else:
+            logger.warning(f"Drive file {file_id} has no parent, cannot move to deleted/")
+    except Exception as e:
+        logger.warning(f"Drive delete failed (non-fatal): {e}")
 
 
 async def move_to_processed(file_id: str, parent_folder_id: str, receipt_date: str = "") -> None:

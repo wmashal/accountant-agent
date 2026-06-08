@@ -25,6 +25,7 @@ export interface Receipt {
   currency: string
   date: string | null
   abn: string | null
+  receipt_number: string | null
   receipt_language: string | null
   extraction_model: string | null
   transaction_type: 'income' | 'expense'
@@ -62,6 +63,9 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     }).then(r => r.json()),
+
+  deleteReceipt: (id: number): Promise<void> =>
+    fetch(`${BASE}/receipts/${id}`, { method: 'DELETE' }).then(() => undefined),
 
   updateCustomerName: (id: number, display_name: string) =>
     fetch(`${BASE}/customers/${id}/name`, {

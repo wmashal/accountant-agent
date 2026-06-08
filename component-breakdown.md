@@ -161,6 +161,7 @@ class Customer(Base):
     company_id: str | None          # company registration number
     drive_folder_id: str | None     # Google Drive folder ID
     source: str                     # 'whatsapp' | 'drive' | 'both' (default: 'whatsapp')
+    default_currency: str           # 'ILS' or 'USD' — applied to all receipts
     created_at: datetime
 
 class Receipt(Base):
@@ -172,12 +173,13 @@ class Receipt(Base):
     vendor: str | None
     cost: float | None
     tax: float | None
-    currency: str                   # ISO 4217
+    currency: str                   # ISO 4217 — always customer's default_currency
     date: str | None                # YYYY-MM-DD
     abn: str | None
+    receipt_number: str | None      # Invoice/receipt number extracted from document
     receipt_language: str | None    # BCP 47
     extraction_model: str | None    # gemini-2.5-flash or claude-sonnet-4-5
-    transaction_type: str           # income or expense (default: expense)
+    transaction_type: str           # income or expense — auto-detected from payer field
     status: str                     # processing / pending_confirmation / confirmed / rejected / error
     file_url: str | None
     drive_file_id: str | None       # Google Drive file ID — idempotency key for Drive receipts
@@ -387,9 +389,10 @@ PATCH /api/dashboard/customers/{id}/name
 - Header: name, company, phone — click to edit profile (name + company + ID inline form)
 - Source badge (📱/📁) + Drive folder link (if customer has Drive folder)
 - Summary cards: Confirmed Income / Confirmed Expenses / Net
-- Receipt table: date, vendor, amount, tax, ABN, type, status, file link, Drive link, actions
-  - Click type badge → toggle income/expense instantly
-  - Click Edit → inline edit row (all fields + dropdowns for type/status)
+- Receipt table: date, receipt #, vendor, amount, tax, ABN, type, status, file link, Drive link, actions
+  - **Move button** → toggle income/expense
+  - **Edit button** → inline edit row (all fields + dropdowns for type/status)
+  - **Delete button** → removes DB row + GCS file + moves Drive file to `deleted/` subfolder
   - Click View → modal overlay (image or PDF)
   - Drive receipts show a "Drive" link to the original file in Drive
 
@@ -445,12 +448,12 @@ Used by both Gemini (vision + text) and Claude fallback. Handles receipts in any
 
 ```
 You are a receipt data extraction assistant.
-The receipt may be written in any language. Read it in its original language
-and return all values normalized as described.
 Return ONLY valid JSON — no markdown fences, no explanation.
 
 {
-  "vendor": "string",
+  "vendor": "string",          // issuer of the receipt
+  "payer": "string or null",   // who paid — check fields like "לכבוד", "מקור", "bill to"
+  "receipt_number": "string or null",  // invoice/receipt number
   "cost": 0.00,
   "tax": 0.00,
   "tax_included": false,
@@ -459,17 +462,9 @@ Return ONLY valid JSON — no markdown fences, no explanation.
   "abn": "string or null",
   "receipt_language": "en"
 }
-
-Rules:
-- vendor: transliterate or translate to English if not Latin script
-- cost: total amount including tax, as a number
-- tax: GST/VAT/tax line if explicitly shown; null if not shown
-- tax_included: true if receipt says GST/tax included or equivalent
-- currency: ISO 4217; default AUD if not shown
-- date: as printed on the receipt in any format
-- abn: as printed including spaces; null if not present
-- receipt_language: BCP 47 code (e.g. en, ar, zh, fr, he)
 ```
+
+**Income detection:** After extraction, `normalize.py` checks if the customer's `company_id`, `company_name`, or `display_name` appears in the `vendor` or `payer` fields. If matched → `transaction_type = income`. Otherwise → `expense`.
 
 ---
 

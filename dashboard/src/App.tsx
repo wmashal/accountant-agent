@@ -98,6 +98,13 @@ export default function App() {
     await loadCustomers()
   }
 
+  const deleteReceipt = async (r: Receipt) => {
+    if (!confirm(`Delete receipt from "${r.vendor || 'Unknown'}"? This will also remove the file from storage.`)) return
+    await api.deleteReceipt(r.id)
+    setReceipts(prev => prev.filter(x => x.id !== r.id))
+    await loadCustomers()
+  }
+
   const openPreview = (url: string) => {
     const isPdf = url.toLowerCase().endsWith(".pdf")
     setPreviewIsPdf(isPdf)
@@ -269,8 +276,11 @@ export default function App() {
                   </div>
                   <div className="customer-source">{sourceLabel(c.source)}</div>
                 </div>
-                {c.company_name && (
-                  <div className="customer-company">{c.company_name}{c.company_id ? ` · ${c.company_id}` : ""}</div>
+                {(c.company_name || c.company_id) && (
+                  <div className="customer-company">
+                    {c.company_name || ""}
+                    {c.company_name && c.company_id ? ` · ${c.company_id}` : c.company_id || ""}
+                  </div>
                 )}
                 <div className="customer-phone">{c.display_name && !c.phone_number.startsWith("drive_") ? c.phone_number : ""}</div>
                 <div className="customer-stats">
@@ -351,10 +361,14 @@ export default function App() {
                       <span className="edit-hint"> ✎</span>
                       <span className="header-source">{sourceLabel(selected.source)}</span>
                     </h2>
-                    {selected.company_name && (
+                    {(selected.company_name || selected.company_id) && (
                       <div className="header-company">
-                        {selected.company_name}
-                        {selected.company_id && <span className="header-company-id"> · {selected.company_id}</span>}
+                        {selected.company_name || ""}
+                        {selected.company_name && selected.company_id
+                          ? <span className="header-company-id"> · {selected.company_id}</span>
+                          : selected.company_id
+                            ? <span className="header-company-id">{selected.company_id}</span>
+                            : null}
                       </div>
                     )}
                     <p className="phone-sub">{selected.phone_number.startsWith("drive_") ? "No phone" : selected.phone_number}</p>
@@ -450,6 +464,7 @@ export default function App() {
                           <thead>
                             <tr>
                               <th>Date</th>
+                              <th>Receipt #</th>
                               <th>Vendor</th>
                               <th>Amount</th>
                               <th>Tax</th>
@@ -465,6 +480,7 @@ export default function App() {
                               editingReceiptId === r.id ? (
                                 <tr key={r.id} className="edit-row">
                                   <td><input className="edit-input" value={editForm.date || ""} onChange={e => setEditForm(p => ({ ...p, date: e.target.value }))} placeholder="YYYY-MM-DD" /></td>
+                                  <td>{r.receipt_number || "—"}</td>
                                   <td><input className="edit-input" value={editForm.vendor || ""} onChange={e => setEditForm(p => ({ ...p, vendor: e.target.value }))} placeholder="Vendor" /></td>
                                   <td>
                                     <input className="edit-input edit-input-sm" type="number" value={editForm.cost ?? ""} onChange={e => setEditForm(p => ({ ...p, cost: parseFloat(e.target.value) || undefined }))} placeholder="Amount" />
@@ -501,6 +517,7 @@ export default function App() {
                               ) : (
                                 <tr key={r.id}>
                                   <td>{r.date || "—"}</td>
+                                  <td>{r.receipt_number || "—"}</td>
                                   <td>{r.vendor || "—"}</td>
                                   <td className="amount">{r.cost != null ? `${r.currency} ${r.cost.toFixed(2)}` : "—"}</td>
                                   <td>{r.tax != null ? `${r.currency} ${r.tax.toFixed(2)}` : "—"}</td>
@@ -519,7 +536,11 @@ export default function App() {
                                     ) : "—"}
                                   </td>
                                   <td className="action-cell">
+                                    <button className="btn-move" onClick={() => toggleType(r)} title={`Move to ${r.transaction_type === 'income' ? 'Expense' : 'Income'}`}>
+                                      {r.transaction_type === "income" ? "→ Expense" : "→ Income"}
+                                    </button>
                                     <button className="btn-edit" onClick={() => startEdit(r)}>Edit</button>
+                                    <button className="btn-delete" onClick={() => deleteReceipt(r)}>Delete</button>
                                   </td>
                                 </tr>
                               )

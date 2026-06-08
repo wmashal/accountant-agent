@@ -119,35 +119,53 @@ The system is built and operational. The phases below track what was built (✅)
 
 ---
 
-## Phase 8 — GCP Deployment ⬜ Planned
+## Phase 8 — GCP Deployment ✅ Complete
 
 See [`deploy-gcp.md`](deploy-gcp.md) for full setup instructions.
 
 | # | Task | Status |
 |---|---|---|
-| 8.1 | Build and push API image to Artifact Registry | ⬜ |
-| 8.2 | Build and push Dashboard image to Artifact Registry | ⬜ |
-| 8.3 | Provision Cloud SQL (Postgres 16) | ⬜ |
-| 8.4 | Provision Memorystore for Redis | ⬜ |
-| 8.5 | Create GCS bucket for receipt file storage | ⬜ |
-| 8.6 | Deploy API to Cloud Run | ⬜ |
-| 8.7 | Deploy Dashboard to Cloud Run | ⬜ |
-| 8.8 | Store all secrets in Secret Manager | ⬜ |
-| 8.9 | Update Twilio webhook URL to Cloud Run API URL | ⬜ |
-| 8.10 | Run DB migration (ALTER TABLE for Drive columns) | ⬜ |
+| 8.1 | Cloud SQL (Postgres 16) on private VPC with VPC connector | ✅ |
+| 8.2 | GCS bucket for receipt file storage | ✅ |
+| 8.3 | All secrets stored in Secret Manager | ✅ |
+| 8.4 | Service account with Cloud SQL, GCS, Secret Manager roles | ✅ |
+| 8.5 | API deployed to Cloud Run (`accountant-api`) | ✅ |
+| 8.6 | Dashboard deployed to Cloud Run (`accountant-dashboard`) | ✅ |
+| 8.7 | DB migrations run (Drive columns + default_currency + receipt_number) | ✅ |
+| 8.8 | Drive poller confirmed running in Cloud Run (removed `--reload` flag) | ✅ |
 
 ---
 
-## Phase 9 — Hardening ⬜ Pending
+## Phase 9 — Dashboard Enhancements ✅ Complete
+
+| # | Task | Status |
+|---|---|---|
+| 9.1 | Default currency per customer (ILS/USD) — used for all receipts | ✅ |
+| 9.2 | Income auto-detection: check `payer` + `vendor` fields for customer company_id/name | ✅ |
+| 9.3 | `payer` field added to extraction prompt (Hebrew fields: לכבוד, מקור) | ✅ |
+| 9.4 | `receipt_number` extracted and shown in dashboard table | ✅ |
+| 9.5 | All/Income/Expense filter tabs with counts | ✅ |
+| 9.6 | Receipts grouped by YYYY-MM with collapsible sections + monthly totals | ✅ |
+| 9.7 | Move button (toggle income↔expense) | ✅ |
+| 9.8 | Delete button — removes DB row + GCS file + moves Drive file to `deleted/` subfolder | ✅ |
+| 9.9 | Drive processed folder: `processed/YYYY-MM/` subfolders based on receipt date | ✅ |
+
+---
+
+## Phase 10 — Hardening ⬜ Pending
 
 | # | Task | Priority |
 |---|---|---|
-| 9.1 | Idempotency: confirm Twilio retry dedup works end-to-end | High |
-| 9.2 | Unit tests: normalize, ABN validator, extraction prompt | Medium |
-| 9.3 | Integration test with mock Twilio webhook payload | Medium |
-| 9.4 | Cron: auto-expire `pending_confirmation` rows older than 7 days | Low |
-| 9.5 | Test with degraded images (dark, skewed, crumpled) | Low |
-| 9.6 | Export receipts to CSV / Excel from dashboard | Low |
+## Phase 10 — Hardening ⬜ Pending
+
+| # | Task | Priority |
+|---|---|---|
+| 10.1 | Idempotency: confirm Twilio retry dedup works end-to-end | High |
+| 10.2 | Unit tests: normalize, ABN validator, extraction prompt | Medium |
+| 10.3 | Integration test with mock Twilio webhook payload | Medium |
+| 10.4 | Cron: auto-expire `pending_confirmation` rows older than 7 days | Low |
+| 10.5 | Test with degraded images (dark, skewed, crumpled) | Low |
+| 10.6 | Export receipts to CSV / Excel from dashboard | Low |
 
 ---
 
@@ -167,7 +185,5 @@ See [`deploy-gcp.md`](deploy-gcp.md) for full setup instructions.
 
 | # | Item | Priority |
 |---|---|---|
-| OI-1 | Production file storage: migrate from local Docker volume to GCS for Cloud Run | High (required for GCP) |
-| OI-2 | Twilio interactive button template for confirm/reject (requires WhatsApp Business approval) | Medium |
-| OI-3 | Multi-currency `$` ambiguity for non-AU receipts | Low |
-| OI-4 | Export receipts to CSV / Excel from dashboard | Low |
+| OI-1 | Twilio interactive button template for confirm/reject (requires WhatsApp Business approval) | Medium |
+| OI-2 | Export receipts to CSV / Excel from dashboard | Low |

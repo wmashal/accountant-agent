@@ -284,6 +284,7 @@ flowchart LR
 | `company_id` | String nullable | Company registration number |
 | `drive_folder_id` | String nullable | Google Drive folder ID for this customer |
 | `source` | String | `whatsapp` \| `drive` \| `both` |
+| `default_currency` | String | `ILS` or `USD` — always applied to receipts, overrides AI-extracted currency |
 | `created_at` | DateTime | UTC |
 
 #### `receipts`
@@ -305,6 +306,7 @@ flowchart LR
 | `transaction_type` | String | `income` or `expense` — default `expense` |
 | `status` | String | `processing`, `pending_confirmation`, `confirmed`, `rejected`, `error` |
 | `file_url` | String nullable | `/files/{phone}/{YYYY-MM}/{sid}.ext` |
+| `receipt_number` | String nullable | Invoice/receipt number extracted from document |
 | `drive_file_id` | String nullable | Google Drive file ID — idempotency key for Drive receipts |
 | `created_at` | DateTime | UTC |
 | `updated_at` | DateTime | UTC, auto-updated |
@@ -338,8 +340,9 @@ Served by FastAPI `StaticFiles` at `/files/` — e.g. `http://localhost:8000/fil
 | `GET` | `/api/dashboard/customers` | All customers with receipt counts, income/expense totals, `drive_folder_id`, `source` |
 | `POST` | `/api/dashboard/customers` | Create customer; auto-creates Drive folder if `GOOGLE_DRIVE_FOLDER_ID` set |
 | `GET` | `/api/dashboard/customers/{id}/receipts` | All receipts for a customer |
-| `PATCH` | `/api/dashboard/receipts/{id}` | Update any receipt fields (vendor, cost, tax, currency, date, abn, type, status) |
-| `PATCH` | `/api/dashboard/customers/{id}/profile` | Update display_name, company_name, company_id |
+| `PATCH` | `/api/dashboard/receipts/{id}` | Update any receipt fields (vendor, cost, tax, currency, date, abn, receipt_number, type, status) |
+| `DELETE` | `/api/dashboard/receipts/{id}` | Delete receipt — removes DB row, GCS file, and moves Drive file to `deleted/` subfolder |
+| `PATCH` | `/api/dashboard/customers/{id}/profile` | Update display_name, company_name, company_id, phone_number, default_currency |
 | `PATCH` | `/api/dashboard/customers/{id}/name` | Update display name only (legacy) |
 
 Dashboard served at http://localhost:3001. The nginx container proxies `/api/` and `/files/` → `http://api:8000`.
@@ -381,8 +384,8 @@ Gemini detects the language, returns a BCP 47 code, and normalizes all values to
 | No tax info found | `tax = None` |
 
 ### Currency
-- Default to `AUD` if no symbol detected
-- `$` in AU context → `AUD`; `US$` → `USD`; `₪` / `NIS` → `ILS`
+- Always use the customer's `default_currency` — AI-extracted currency is ignored
+- Customer default is set at creation (`ILS` or `USD`) and editable from the dashboard
 
 ---
 

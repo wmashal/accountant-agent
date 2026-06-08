@@ -106,7 +106,7 @@ async def process_single_receipt(
             cust = await session.execute(sa_select(Customer).where(Customer.phone_number == from_number))
             customer = cust.scalar_one_or_none()
             default_currency = customer.default_currency if customer else "USD"
-            customer_identity = {customer.company_id, customer.company_name} if customer else set()
+            customer_identity = {customer.company_id, customer.company_name, customer.display_name} if customer else set()
 
             # Normalize
             data = normalize(raw_result, extraction_model=model, raw_ocr=ocr_text, default_currency=default_currency, customer_identity=customer_identity)
@@ -227,8 +227,9 @@ async def _process_drive_single_page(
             raw_result, model = await extract(file_bytes, content_type, ocr_text=None)
             logger.info(f"Drive extraction: model={model} vendor={raw_result.get('vendor')} cost={raw_result.get('cost')}")
 
-            customer_identity = {customer.company_id, customer.company_name}
-            data = normalize(raw_result, extraction_model=model, raw_ocr=None, default_currency=customer.default_currency, customer_identity=customer_identity)
+            customer_identity = {customer.company_id, customer.company_name, customer.display_name}
+            raw_text = " ".join(str(v) for v in raw_result.values() if v)
+            data = normalize(raw_result, extraction_model=model, raw_ocr=raw_text, default_currency=customer.default_currency, customer_identity=customer_identity)
 
             # Store file locally (same as WhatsApp path)
             phone_key = f"drive_{customer.id}"
