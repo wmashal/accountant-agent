@@ -41,6 +41,18 @@ export default function App() {
 
   useEffect(() => { loadCustomers() }, [loadCustomers])
 
+  const refreshCustomer = async () => {
+    if (!selected) return
+    const [customers, receipts] = await Promise.all([
+      api.getCustomers(),
+      api.getReceipts(selected.id),
+    ])
+    setCustomers(customers)
+    setReceipts(receipts)
+    const updated = customers.find(c => c.id === selected.id)
+    if (updated) setSelected(updated)
+  }
+
   const selectCustomer = async (c: CustomerSummary) => {
     setSelected(c)
     setEditingProfile(false)
@@ -399,6 +411,7 @@ export default function App() {
                   <div className="card-label">Net</div>
                   <div className="card-value">{(totalIncome - totalExpense).toFixed(2)}</div>
                 </div>
+                <button className="btn-refresh" onClick={refreshCustomer} title="Refresh receipts">↻ Refresh</button>
               </div>
             </div>
 

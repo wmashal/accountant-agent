@@ -24,13 +24,12 @@ def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, d
     currency = default_currency
 
     # --- Transaction type ---
-    # Check vendor, payer, and full raw text for customer's company_id / company_name / display_name
+    # Income when YOU are the vendor (you issued the receipt to someone else)
+    # Expense when someone else is the vendor (you paid them) — this is the default
     transaction_type = "expense"
     if customer_identity:
-        search_text = vendor.lower() + " " + payer.lower()
-        if raw_ocr:
-            search_text += " " + raw_ocr.lower()
-        if any(identity.lower() in search_text for identity in customer_identity if identity):
+        vendor_lower = vendor.lower()
+        if any(identity.lower() in vendor_lower for identity in customer_identity if identity):
             transaction_type = "income"
 
     # --- Date ---
