@@ -625,3 +625,61 @@ gcloud run deploy accountant-api \
   # (remove --add-cloudsql-instances)
   ...
 ```
+
+---
+
+## Cleanup — Delete Everything After Demo
+
+Run these commands to tear down all GCP resources and stop all billing.
+
+```bash
+export PROJECT_ID=accountant-agent-498810
+export REGION=us-central1
+
+# 1. Delete Cloud Run services
+gcloud run services delete accountant-api --region=${REGION} --quiet
+gcloud run services delete accountant-dashboard --region=${REGION} --quiet
+gcloud run services delete accountant-redis --region=${REGION} --quiet
+
+# 2. Delete Cloud SQL instance (this deletes all databases and data)
+gcloud sql instances delete accountant-db --quiet
+
+# 3. Delete GCS bucket and all files
+gcloud storage rm -r gs://accountant-receipts-${PROJECT_ID}
+
+# 4. Delete Artifact Registry images
+gcloud artifacts repositories delete accountant-agent \
+  --location=${REGION} \
+  --quiet
+
+# 5. Delete all secrets
+gcloud secrets delete TWILIO_ACCOUNT_SID --quiet
+gcloud secrets delete TWILIO_AUTH_TOKEN --quiet
+gcloud secrets delete TWILIO_FROM_NUMBER --quiet
+gcloud secrets delete GEMINI_API_KEY --quiet
+gcloud secrets delete ANTHROPIC_API_KEY --quiet
+gcloud secrets delete LLAMA_CLOUD_API_KEY --quiet
+gcloud secrets delete DATABASE_URL --quiet
+gcloud secrets delete REDIS_URL --quiet
+gcloud secrets delete GCS_BUCKET_NAME --quiet
+gcloud secrets delete GOOGLE_DRIVE_FOLDER_ID --quiet
+gcloud secrets delete GOOGLE_CREDENTIALS_JSON --quiet
+
+# 6. Delete service account
+gcloud iam service-accounts delete \
+  accountant-api-sa@${PROJECT_ID}.iam.gserviceaccount.com --quiet
+
+# 7. Delete VPC connector and network (if created)
+gcloud compute networks vpc-access connectors delete accountant-connector \
+  --region=${REGION} --quiet
+gcloud compute addresses delete google-managed-services-accountant-vpc \
+  --global --quiet
+gcloud compute networks delete accountant-vpc --quiet
+```
+
+> After running cleanup, verify no billable resources remain:
+> ```bash
+> gcloud run services list --region=${REGION}
+> gcloud sql instances list
+> gcloud storage buckets list
+> ```
