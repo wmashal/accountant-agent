@@ -98,35 +98,56 @@ The system is built and operational. The phases below track what was built (✅)
 
 ---
 
-## Phase 7 — GCP Deployment ⬜ Planned
+## Phase 7 — Google Drive Integration ✅ Complete
+
+| # | Task | Status |
+|---|---|---|
+| 7.1 | `drive_folder_id` + `source` columns on `customers`; `drive_file_id` on `receipts` | ✅ |
+| 7.2 | `google_drive.py`: `create_customer_folder()`, `list_folder_files()`, `download_file()`, `move_to_processed()` | ✅ |
+| 7.3 | `drive_poller.py`: asyncio background loop, polls all customers with `drive_folder_id` every 30s | ✅ |
+| 7.4 | `process_single_receipt_from_drive()`: same extract/normalize pipeline, auto-confirms, no Twilio | ✅ |
+| 7.5 | `db_service.py`: `create_customer()`, `get_processed_drive_file_ids()`, `upsert_receipt_from_drive()` | ✅ |
+| 7.6 | `POST /api/dashboard/customers` — creates customer + Drive folder, returns share link | ✅ |
+| 7.7 | Dashboard: "+ Add Customer" modal form (name, company, ID, phone optional) | ✅ |
+| 7.8 | Dashboard: source badges (📱/📁) per customer in sidebar and header | ✅ |
+| 7.9 | Dashboard: Drive folder link in customer header; Drive file link in receipt table | ✅ |
+| 7.10 | Drive-only customers use `drive_{uuid}` placeholder phone for DB uniqueness | ✅ |
+| 7.11 | Multi-page PDF from Drive split into individual receipt rows (same pypdf logic) | ✅ |
+| 7.12 | Poller started in `app/main.py` lifespan (conditional on `GOOGLE_DRIVE_FOLDER_ID`) | ✅ |
+| 7.13 | `DRIVE_POLL_INTERVAL_SECONDS` env var (default 30) | ✅ |
+| 7.14 | End-to-end tested: 3-page PDF + JPG + single-page PDF → 5 confirmed receipts | ✅ |
+
+---
+
+## Phase 8 — GCP Deployment ⬜ Planned
 
 See [`deploy-gcp.md`](deploy-gcp.md) for full setup instructions.
 
 | # | Task | Status |
 |---|---|---|
-| 7.1 | Build and push API image to Artifact Registry | ⬜ |
-| 7.2 | Build and push Dashboard image to Artifact Registry | ⬜ |
-| 7.3 | Provision Cloud SQL (Postgres 16) | ⬜ |
-| 7.4 | Provision Memorystore for Redis | ⬜ |
-| 7.5 | Create GCS bucket for receipt file storage | ⬜ |
-| 7.6 | Deploy API to Cloud Run | ⬜ |
-| 7.7 | Deploy Dashboard to Cloud Run | ⬜ |
-| 7.8 | Store all secrets in Secret Manager | ⬜ |
-| 7.9 | Update Twilio webhook URL to Cloud Run API URL | ⬜ |
-| 7.10 | Run DB migration (ALTER TABLE for company columns) | ⬜ |
+| 8.1 | Build and push API image to Artifact Registry | ⬜ |
+| 8.2 | Build and push Dashboard image to Artifact Registry | ⬜ |
+| 8.3 | Provision Cloud SQL (Postgres 16) | ⬜ |
+| 8.4 | Provision Memorystore for Redis | ⬜ |
+| 8.5 | Create GCS bucket for receipt file storage | ⬜ |
+| 8.6 | Deploy API to Cloud Run | ⬜ |
+| 8.7 | Deploy Dashboard to Cloud Run | ⬜ |
+| 8.8 | Store all secrets in Secret Manager | ⬜ |
+| 8.9 | Update Twilio webhook URL to Cloud Run API URL | ⬜ |
+| 8.10 | Run DB migration (ALTER TABLE for Drive columns) | ⬜ |
 
 ---
 
-## Phase 8 — Hardening ⬜ Pending
+## Phase 9 — Hardening ⬜ Pending
 
 | # | Task | Priority |
 |---|---|---|
-| 8.1 | Idempotency: confirm Twilio retry dedup works end-to-end | High |
-| 8.2 | Unit tests: normalize, ABN validator, extraction prompt | Medium |
-| 8.3 | Integration test with mock Twilio webhook payload | Medium |
-| 8.4 | Cron: auto-expire `pending_confirmation` rows older than 7 days | Low |
-| 8.5 | Test with degraded images (dark, skewed, crumpled) | Low |
-| 8.6 | Export receipts to CSV / Excel from dashboard | Low |
+| 9.1 | Idempotency: confirm Twilio retry dedup works end-to-end | High |
+| 9.2 | Unit tests: normalize, ABN validator, extraction prompt | Medium |
+| 9.3 | Integration test with mock Twilio webhook payload | Medium |
+| 9.4 | Cron: auto-expire `pending_confirmation` rows older than 7 days | Low |
+| 9.5 | Test with degraded images (dark, skewed, crumpled) | Low |
+| 9.6 | Export receipts to CSV / Excel from dashboard | Low |
 
 ---
 

@@ -1,13 +1,16 @@
-# Accountant Agent — WhatsApp Receipt OCR & Data Extraction Suite
+# Accountant Agent — Receipt OCR & Data Extraction Suite
 
-Automated receipt processing system. Users send a receipt photo or PDF via WhatsApp and receive back structured, accounting-ready data — no manual entry required. An admin dashboard lets the accountant review, classify, and manage all receipts per customer.
+Automated receipt processing system with two ingestion channels:
+
+- **WhatsApp**: Users send a receipt photo or PDF via WhatsApp and receive back structured, accounting-ready data — no manual entry required.
+- **Google Drive**: Accountant creates a customer from the dashboard → a Drive folder is auto-created → customer uploads receipts → system picks them up automatically and confirms them.
+
+An admin dashboard lets the accountant review, classify, and manage all receipts per customer.
 
 ## Architecture at a Glance
 
 ```
 WhatsApp → Twilio → FastAPI → BackgroundTask
-                                    ↓
-                       LlamaParse (PDF) / Gemini Vision (Image)
                                     ↓
                        Gemini 2.5 Flash extraction → normalize
                                     ↓
@@ -17,6 +20,14 @@ WhatsApp → Twilio → FastAPI → BackgroundTask
                        WhatsApp reply → user confirms or rejects
                                     ↓
                        React Dashboard → accountant classifies income/expense
+
+Google Drive Folder → Drive Poller (asyncio, every 30s)
+                                    ↓
+                       Download → Gemini 2.5 Flash extraction → normalize
+                                    ↓
+                       Auto-confirmed (no user reply needed)
+                                    ↓
+                       React Dashboard (same view)
 ```
 
 ## Quick Start (Docs)
@@ -59,11 +70,14 @@ Services exposed:
 
 | Decision | Choice | Reason |
 |---|---|---|
-| Orchestration | FastAPI BackgroundTasks + Redis | No broker needed, simpler stack |
-| OCR for PDFs | LlamaParse (invoice preset) → fallback Gemini Vision | Best table/invoice extraction; free tier times out gracefully |
+| WhatsApp orchestration | FastAPI BackgroundTasks + Redis | No broker needed, simpler stack |
+| Drive ingestion | asyncio background poller (30s) | No webhooks needed; Drive API polling is sufficient |
+| OCR for PDFs | Gemini Vision (application/pdf inline) | LlamaParse present but bypassed (free tier times out) |
 | OCR for Images | Gemini Vision direct | Single API call, lower latency |
 | Primary LLM | Gemini 2.5 Flash | Price/performance for vision + structured output |
 | Fallback LLM | Claude Sonnet 4.5 | Triggered on parse failure only |
 | Database | Postgres (SQLAlchemy async + asyncpg) | Structured queries, per-customer reporting |
 | File Storage | Local disk with Docker volume + FastAPI StaticFiles | Simple, no cloud dependencies for POC |
 | Dashboard | React + Vite + TypeScript + nginx | Modern UI, served on port 3001 |
+| Customer creation | Dashboard "Add Customer" form | Accountant creates customer → Drive folder auto-created |
+| Drive confirmation | Auto-confirmed | Accountant is the uploader — no user reply needed |

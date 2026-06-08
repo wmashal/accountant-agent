@@ -9,32 +9,33 @@ accountant-agent/
 ├── requirements.txt                # Python dependencies
 ├── .env.example                    # Environment variable template
 ├── app/
-│   ├── main.py                     # FastAPI entry point, mounts /files/ static
+│   ├── main.py                     # FastAPI entry point, mounts /files/ static, starts Drive poller
 │   ├── db.py                       # SQLAlchemy engine + SessionLocal (lazy init)
 │   ├── config.py                   # Settings from env vars (pydantic-settings)
 │   ├── routes/
 │   │   ├── webhook.py              # POST /webhook — inbound WhatsApp messages
-│   │   ├── dashboard.py            # GET/PATCH /api/dashboard/* — admin API
+│   │   ├── dashboard.py            # GET/POST/PATCH /api/dashboard/* — admin API
 │   │   └── health.py               # GET /health
 │   ├── pipeline/
-│   │   ├── process_receipt.py      # Main async pipeline + batch settle + auto-confirm
+│   │   ├── process_receipt.py      # WhatsApp pipeline + Drive pipeline + batch settle + auto-confirm
 │   │   ├── ocr.py                  # LlamaParse (unused) + Twilio media fetch
 │   │   ├── extract.py              # Gemini (3 retries) + Claude fallback
 │   │   └── normalize.py            # Date, ABN, GST, currency normalization
 │   ├── services/
 │   │   ├── twilio_client.py        # Send WhatsApp messages (summary, registration, confirm)
 │   │   ├── local_storage.py        # Save files to /app/receipts/ Docker volume
-│   │   ├── db_service.py           # Postgres CRUD
+│   │   ├── db_service.py           # Postgres CRUD (WhatsApp + Drive)
 │   │   ├── gemini_client.py        # Gemini Vision API calls
 │   │   ├── claude_client.py        # Claude API calls (image fallback only)
 │   │   ├── redis_client.py         # Redis singleton
-│   │   ├── google_sheets.py        # Legacy — not used in active pipeline
-│   │   └── google_drive.py         # Legacy — not used in active pipeline
+│   │   ├── google_drive.py         # Drive folder creation, file listing, download, move
+│   │   ├── drive_poller.py         # asyncio background poller — polls Drive folders every 30s
+│   │   └── google_sheets.py        # Legacy — not used in active pipeline
 │   └── models/
 │       └── receipt.py              # ReceiptData dataclass + Customer/Receipt ORM models
 ├── dashboard/
 │   ├── src/
-│   │   ├── App.tsx                 # Two-panel: customer sidebar + receipt table
+│   │   ├── App.tsx                 # Two-panel: customer sidebar + receipt table + Add Customer modal
 │   │   ├── App.css                 # Styling
 │   │   └── api.ts                  # Typed API client
 │   ├── Dockerfile                  # Multi-stage: node build → nginx serve
@@ -105,6 +106,10 @@ RECEIPTS_DIR = Path("/app/receipts")
 async def lifespan(app: FastAPI):
     RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
     await init_db()   # creates tables if not exist
+    # Start Drive poller if configured
+    if settings.google_drive_folder_id and settings.google_service_account_file:
+        from app.services.drive_poller import poll_drive_forever
+        asyncio.create_task(poll_drive_forever())
     yield
 
 app = FastAPI(title="Accountant Agent", lifespan=lifespan)
@@ -150,29 +155,32 @@ async def init_db():
 class Customer(Base):
     __tablename__ = "customers"
     id: int (PK)
-    phone_number: str (unique)
-    display_name: str | None      # set during registration or via dashboard
-    company_name: str | None      # set during registration or via dashboard
-    company_id: str | None        # company registration number
+    phone_number: str (unique)      # WhatsApp number or drive_{uuid} placeholder
+    display_name: str | None        # set during registration or via dashboard
+    company_name: str | None        # set during registration or via dashboard
+    company_id: str | None          # company registration number
+    drive_folder_id: str | None     # Google Drive folder ID
+    source: str                     # 'whatsapp' | 'drive' | 'both' (default: 'whatsapp')
     created_at: datetime
 
 class Receipt(Base):
     __tablename__ = "receipts"
     id: int (PK)
-    message_sid: str (unique)     # Twilio MessageSid — idempotency key
+    message_sid: str (unique)       # Twilio MessageSid or drive_{file_id}[_pN] — idempotency key
     customer_id: int (FK)
     phone_number: str
     vendor: str | None
     cost: float | None
     tax: float | None
-    currency: str                 # ISO 4217
-    date: str | None              # YYYY-MM-DD
+    currency: str                   # ISO 4217
+    date: str | None                # YYYY-MM-DD
     abn: str | None
-    receipt_language: str | None  # BCP 47
-    extraction_model: str | None  # gemini-2.5-flash or claude-sonnet-4-5
-    transaction_type: str         # income or expense (default: expense)
-    status: str                   # processing / pending_confirmation / confirmed / rejected / error
+    receipt_language: str | None    # BCP 47
+    extraction_model: str | None    # gemini-2.5-flash or claude-sonnet-4-5
+    transaction_type: str           # income or expense (default: expense)
+    status: str                     # processing / pending_confirmation / confirmed / rejected / error
     file_url: str | None
+    drive_file_id: str | None       # Google Drive file ID — idempotency key for Drive receipts
     created_at: datetime
     updated_at: datetime
 ```
@@ -319,10 +327,13 @@ Files served by FastAPI `StaticFiles`. Proxied through nginx at `/files/` so the
 | Function | Description |
 |---|---|
 | `get_or_create_customer(session, phone)` | Upsert customer by phone number |
+| `create_customer(session, display_name, company_name, company_id, phone_number, drive_folder_id)` | Create new customer (Drive flow) |
 | `create_receipt_row(session, sid, phone)` | Create placeholder row (status=processing) |
-| `upsert_receipt(session, sid, phone, data, url, status)` | Create or update full receipt row |
+| `upsert_receipt(session, sid, phone, data, url, status)` | Create or update full receipt row (WhatsApp) |
+| `upsert_receipt_from_drive(session, sid, customer_id, data, url, drive_file_id)` | Create receipt row auto-confirmed (Drive) |
 | `update_receipt_status(session, sid, status)` | Mark as confirmed/rejected/error |
 | `update_customer_profile(session, phone, name, company, id)` | Set display_name, company_name, company_id |
+| `get_processed_drive_file_ids(session, customer_id)` | Return set of already-processed Drive file IDs for dedup |
 
 ---
 
@@ -331,11 +342,18 @@ Files served by FastAPI `StaticFiles`. Proxied through nginx at `/files/` so the
 ```
 GET  /api/dashboard/customers
      → [{id, phone_number, display_name, company_name, company_id,
+         drive_folder_id, drive_share_link, source,
          total_receipts, total_income, total_expense, created_at}]
+
+POST /api/dashboard/customers
+     body: {display_name, company_name?, company_id?, phone_number?}
+     → creates customer + Drive folder (if GOOGLE_DRIVE_FOLDER_ID set)
+     → CustomerSummary with drive_share_link
 
 GET  /api/dashboard/customers/{id}/receipts
      → [{id, message_sid, vendor, cost, tax, currency, date, abn,
-         status, transaction_type, file_url, receipt_language, extraction_model, created_at}]
+         status, transaction_type, file_url, drive_file_id,
+         receipt_language, extraction_model, created_at}]
 
 PATCH /api/dashboard/receipts/{id}
       body: any subset of {vendor, cost, tax, currency, date, abn, transaction_type, status}
@@ -356,16 +374,24 @@ PATCH /api/dashboard/customers/{id}/name
 
 **Left panel — Customer sidebar**
 - Search bar: filters by name, phone, company name, company ID (client-side)
-- Customer list: name/phone, company name + ID, income/expense/count badges
+- Customer list: name/phone, company name + ID, income/expense/count badges, source badge (📱/📁)
+- "+ Add Customer" button at the bottom → opens modal form
 - Click to select
+
+**Add Customer modal**
+- Fields: Display Name (required), Company Name, Company ID, Phone (optional)
+- On submit: calls `POST /api/dashboard/customers`
+- On success: shows Drive folder share link to give to the customer
 
 **Right panel — Customer detail**
 - Header: name, company, phone — click to edit profile (name + company + ID inline form)
+- Source badge (📱/📁) + Drive folder link (if customer has Drive folder)
 - Summary cards: Confirmed Income / Confirmed Expenses / Net
-- Receipt table: date, vendor, amount, tax, ABN, type, status, file link, actions
+- Receipt table: date, vendor, amount, tax, ABN, type, status, file link, Drive link, actions
   - Click type badge → toggle income/expense instantly
   - Click Edit → inline edit row (all fields + dropdowns for type/status)
   - Click View → modal overlay (image or PDF)
+  - Drive receipts show a "Drive" link to the original file in Drive
 
 **File preview modal**
 - Images: `<img>` tag
@@ -464,9 +490,12 @@ GEMINI_API_KEY=AIzaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 # Claude (Anthropic) — image fallback only
 ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxx
 
-# Google (optional — legacy Sheets/Drive features not in active pipeline)
+# Google Drive — service account + root folder
 GOOGLE_SERVICE_ACCOUNT_FILE=/secrets/credentials.json
-GOOGLE_CREDENTIALS_FILE=accountant-agent-498810-1cbc6f7bf4c0.json
+GOOGLE_DRIVE_FOLDER_ID=your-google-drive-folder-id-from-url
+
+# Drive poller interval in seconds (30 for dev, 300 for prod)
+DRIVE_POLL_INTERVAL_SECONDS=30
 
 # Postgres
 DATABASE_URL=postgresql+asyncpg://accountant:accountant@postgres/accountant

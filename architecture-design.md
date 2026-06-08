@@ -2,7 +2,13 @@
 
 ## Overview
 
-Event-driven pipeline triggered by an inbound WhatsApp message. A thin FastAPI service receives the webhook, fires a background task via `BackgroundTasks`, and returns HTTP 200 immediately. The background task handles all async processing — extraction, normalization, storage, and reply. Redis manages state for registration, batch tracking, and confirmation. Postgres stores all structured receipt data. A React dashboard allows the accountant to classify and review receipts per customer.
+Two receipt ingestion channels feed the same Postgres database and React dashboard:
+
+1. **WhatsApp (Twilio)** — Event-driven pipeline triggered by an inbound WhatsApp message. A thin FastAPI service receives the webhook, fires a background task via `BackgroundTasks`, and returns HTTP 200 immediately. Redis manages state for registration, batch tracking, and confirmation.
+
+2. **Google Drive** — Accountant creates a customer from the dashboard; the system auto-creates a Drive folder. An asyncio background poller runs every 30 seconds, picks up new files, extracts data, and auto-confirms receipts (no user reply needed).
+
+Postgres stores all structured receipt data. A React dashboard allows the accountant to classify and review receipts from both channels per customer.
 
 ---
 
@@ -25,9 +31,14 @@ flowchart TD
     Twilio -->|POST /webhook| API
     API -->|Lookup pending SIDs| Redis
     API -->|Bulk update status| PG
-    Accountant([Accountant]) -->|View + classify| Dashboard[React Dashboard :3001]
+    Accountant([Accountant]) -->|Create customer| Dashboard[React Dashboard :3001]
+    Accountant -->|View + classify| Dashboard
     Dashboard -->|REST API| API
+    API -->|Create Drive folder| Drive[(Google Drive)]
     API -->|Query| PG
+    DrivePoller[Drive Poller\nasyncio every 30s] -->|List + download files| Drive
+    DrivePoller -->|Extract + auto-confirm| PG
+    DrivePoller -->|Move to processed/| Drive
 ```
 
 ---
@@ -178,6 +189,49 @@ sequenceDiagram
 
 ---
 
+## Google Drive Ingestion Flow
+
+```mermaid
+sequenceDiagram
+    participant A as Accountant (Dashboard)
+    participant API as FastAPI
+    participant PG as Postgres
+    participant Drive as Google Drive
+    participant Poller as Drive Poller (asyncio)
+    participant G as Gemini 2.5 Flash
+
+    A->>API: POST /api/dashboard/customers (name, company, id)
+    API->>Drive: create_customer_folder() → Receipts/Name_ID/
+    Drive-->>API: folder_id + share_link
+    API->>PG: INSERT customer (drive_folder_id, source=drive)
+    API-->>A: CustomerSummary with share link
+
+    Note over A: Accountant shares Drive link with customer
+
+    loop Every 30s
+        Poller->>PG: Fetch customers with drive_folder_id
+        Poller->>Drive: list_folder_files(folder_id)
+        Drive-->>Poller: [{id, name, mimeType}]
+        Poller->>PG: get_processed_drive_file_ids() — dedup
+        Poller->>Drive: download_file(file_id)
+        Drive-->>Poller: (bytes, content_type)
+        Poller->>G: extract(bytes, content_type)
+        G-->>Poller: JSON extraction
+        Poller->>Poller: normalize()
+        Poller->>PG: upsert_receipt_from_drive() (status=confirmed)
+        Poller->>Drive: move_to_processed(file_id) → processed/ subfolder
+    end
+```
+
+**Key differences from WhatsApp:**
+- No Twilio, no Redis counter, no confirmation step
+- `status` is set directly to `confirmed`
+- `drive_file_id` stored in DB for idempotency (poller deduplicates on each cycle)
+- Multi-page PDFs split into individual pages, each stored as a separate receipt row
+- Processed files moved to `processed/` subfolder in the customer's Drive folder
+
+---
+
 ## Job State Machine
 
 ```mermaid
@@ -224,10 +278,12 @@ flowchart LR
 | Column | Type | Notes |
 |---|---|---|
 | `id` | Integer PK | Auto-increment |
-| `phone_number` | String unique | WhatsApp number (e.g. `whatsapp:+972524871170`) |
+| `phone_number` | String unique | WhatsApp number or `drive_{uuid}` placeholder for Drive-only customers |
 | `display_name` | String nullable | Set during registration or via dashboard |
 | `company_name` | String nullable | Set during registration or via dashboard |
 | `company_id` | String nullable | Company registration number |
+| `drive_folder_id` | String nullable | Google Drive folder ID for this customer |
+| `source` | String | `whatsapp` \| `drive` \| `both` |
 | `created_at` | DateTime | UTC |
 
 #### `receipts`
@@ -249,6 +305,7 @@ flowchart LR
 | `transaction_type` | String | `income` or `expense` — default `expense` |
 | `status` | String | `processing`, `pending_confirmation`, `confirmed`, `rejected`, `error` |
 | `file_url` | String nullable | `/files/{phone}/{YYYY-MM}/{sid}.ext` |
+| `drive_file_id` | String nullable | Google Drive file ID — idempotency key for Drive receipts |
 | `created_at` | DateTime | UTC |
 | `updated_at` | DateTime | UTC, auto-updated |
 
@@ -278,7 +335,8 @@ Served by FastAPI `StaticFiles` at `/files/` — e.g. `http://localhost:8000/fil
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/dashboard/customers` | All customers with receipt counts, income/expense totals |
+| `GET` | `/api/dashboard/customers` | All customers with receipt counts, income/expense totals, `drive_folder_id`, `source` |
+| `POST` | `/api/dashboard/customers` | Create customer; auto-creates Drive folder if `GOOGLE_DRIVE_FOLDER_ID` set |
 | `GET` | `/api/dashboard/customers/{id}/receipts` | All receipts for a customer |
 | `PATCH` | `/api/dashboard/receipts/{id}` | Update any receipt fields (vendor, cost, tax, currency, date, abn, type, status) |
 | `PATCH` | `/api/dashboard/customers/{id}/profile` | Update display_name, company_name, company_id |
