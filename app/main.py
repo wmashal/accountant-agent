@@ -17,7 +17,6 @@ RECEIPTS_DIR = Path("/app/receipts")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
     await init_db()
 
     settings = get_settings()
@@ -41,4 +40,10 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(webhook_router)
 app.include_router(dashboard_router)
-app.mount("/files", StaticFiles(directory=str(RECEIPTS_DIR)), name="files")
+
+# Only serve local receipt files when not using GCS (local dev).
+# In production GCS_BUCKET_NAME is set and files are served directly from GCS.
+_settings = get_settings()
+if not _settings.gcs_bucket_name:
+    RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
+    app.mount("/files", StaticFiles(directory=str(RECEIPTS_DIR)), name="files")

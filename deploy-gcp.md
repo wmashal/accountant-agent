@@ -140,7 +140,7 @@ docker push ${REGISTRY}/dashboard:latest
 ## Step 4 — Cloud SQL (Postgres)
 
 ```bash
-# Create Postgres 16 instance with public IP (POC — simpler, no VPC needed)
+# Create Postgres 16 instance with public IP
 gcloud sql instances create accountant-db \
   --database-version=POSTGRES_16 \
   --tier=db-g1-small \
@@ -153,28 +153,34 @@ gcloud sql instances create accountant-db \
 gcloud sql databases create accountant \
   --instance=accountant-db
 
-# Create user (choose a strong password)
+# Create user
 gcloud sql users create accountant \
   --instance=accountant-db \
   --password=CHANGE_THIS_PASSWORD
 
-# Get the instance connection name (needed for DATABASE_URL)
+# Get the instance connection name
 gcloud sql instances describe accountant-db \
   --format="value(connectionName)"
 ```
 
 The connection name looks like: `accountant-agent-498810:us-central1:accountant-db`
 
-**DATABASE_URL format for Cloud Run (Auth Proxy via Unix socket):**
+**DATABASE_URL for Cloud Run (Auth Proxy via Unix socket):**
 ```
 postgresql+asyncpg://accountant:CHANGE_THIS_PASSWORD@/accountant?host=/cloudsql/accountant-agent-498810:us-central1:accountant-db
 ```
 
-> Cloud Run has built-in Cloud SQL Auth Proxy support. Adding `--add-cloudsql-instances` to the deploy command makes the proxy socket available automatically — no sidecar needed, connection is IAM-authenticated and encrypted.
+Store it as a secret:
+```bash
+echo -n "postgresql+asyncpg://accountant:CHANGE_THIS_PASSWORD@/accountant?host=/cloudsql/accountant-agent-498810:us-central1:accountant-db" | \
+  gcloud secrets create DATABASE_URL --data-file=- --replication-policy=automatic
+```
+
+> Cloud Run has built-in Cloud SQL Auth Proxy support. The `--add-cloudsql-instances` flag in the deploy command makes the proxy Unix socket available automatically — no sidecar needed, connection is IAM-authenticated and TLS-encrypted. No VPC required.
 
 ### DB Migration
 
-Run after first deploy. Adds columns added after the initial schema:
+Run after first deploy:
 
 ```bash
 gcloud sql connect accountant-db --user=accountant --database=accountant
@@ -270,7 +276,7 @@ create_secret TWILIO_FROM_NUMBER      "+1415xxxxxxx"
 create_secret GEMINI_API_KEY          "AIzaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 create_secret ANTHROPIC_API_KEY       "sk-ant-xxxxxxxxxxxxxxxxxxxx"
 create_secret LLAMA_CLOUD_API_KEY     "llx-xxxxxxxxxxxxxxxxxxxx"
-create_secret DATABASE_URL            "postgresql+asyncpg://accountant:CHANGE_THIS_PASSWORD@<PRIVATE_IP>/accountant"
+create_secret DATABASE_URL            "postgresql+asyncpg://accountant:CHANGE_THIS_PASSWORD@/accountant?host=/cloudsql/accountant-agent-498810:us-central1:accountant-db"
 create_secret REDIS_URL               "rediss://<redis-service-url-without-https>:443/0"
 create_secret GCS_BUCKET_NAME         "accountant-receipts-${PROJECT_ID}"
 create_secret GOOGLE_DRIVE_FOLDER_ID  "your-root-drive-folder-id"
@@ -322,18 +328,7 @@ gcloud run deploy accountant-api \
   --cpu=1 \
   --timeout=300 \
   --add-cloudsql-instances=accountant-agent-498810:us-central1:accountant-db \
-  --set-secrets=\
-TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,\
-TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,\
-TWILIO_FROM_NUMBER=TWILIO_FROM_NUMBER:latest,\
-GEMINI_API_KEY=GEMINI_API_KEY:latest,\
-ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,\
-LLAMA_CLOUD_API_KEY=LLAMA_CLOUD_API_KEY:latest,\
-DATABASE_URL=DATABASE_URL:latest,\
-REDIS_URL=REDIS_URL:latest,\
-GCS_BUCKET_NAME=GCS_BUCKET_NAME:latest,\
-GOOGLE_DRIVE_FOLDER_ID=GOOGLE_DRIVE_FOLDER_ID:latest,\
-/secrets/credentials.json=GOOGLE_CREDENTIALS_JSON:latest \
+  --set-secrets=TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_FROM_NUMBER=TWILIO_FROM_NUMBER:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,LLAMA_CLOUD_API_KEY=LLAMA_CLOUD_API_KEY:latest,DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,GCS_BUCKET_NAME=GCS_BUCKET_NAME:latest,GOOGLE_DRIVE_FOLDER_ID=GOOGLE_DRIVE_FOLDER_ID:latest,/secrets/credentials.json=GOOGLE_CREDENTIALS_JSON:latest \
   --set-env-vars=ENVIRONMENT=production,GOOGLE_SERVICE_ACCOUNT_FILE=/secrets/credentials.json,DRIVE_POLL_INTERVAL_SECONDS=300
 
 # Save the API URL
@@ -343,7 +338,9 @@ export API_URL=$(gcloud run services describe accountant-api \
 echo "API URL: ${API_URL}"
 ```
 
-> **`--min-instances=1`** is required. The Drive poller (`asyncio.create_task`) and auto-confirm timers run as background tasks — they need the container to stay alive between requests.
+> **`--min-instances=1`** is required. The Drive poller and auto-confirm timers run as asyncio background tasks — they need the container to stay alive between requests.
+
+> **`--add-cloudsql-instances`** enables the built-in Cloud SQL Auth Proxy. The DATABASE_URL must use the Unix socket format (`?host=/cloudsql/...`). No VPC connector needed.
 
 ---
 
@@ -516,7 +513,7 @@ gcloud run deploy accountant-dashboard --image=${REGISTRY}/dashboard:latest --re
 | `GEMINI_API_KEY` | Secret Manager | |
 | `ANTHROPIC_API_KEY` | Secret Manager | |
 | `LLAMA_CLOUD_API_KEY` | Secret Manager | Present but pipeline bypasses it |
-| `DATABASE_URL` | Secret Manager | `postgresql+asyncpg://...@<PRIVATE_IP>/accountant` |
+| `DATABASE_URL` | Secret Manager | `postgresql+asyncpg://user:pass@/db?host=/cloudsql/<connection-name>` |
 | `REDIS_URL` | Secret Manager | `rediss://<cloud-run-url>:443/0` |
 | `GCS_BUCKET_NAME` | Secret Manager | Triggers GCS upload instead of local disk |
 | `GOOGLE_DRIVE_FOLDER_ID` | Secret Manager | Root Drive folder for customer folders |
@@ -530,9 +527,9 @@ gcloud run deploy accountant-dashboard --image=${REGISTRY}/dashboard:latest --re
 ## Troubleshooting
 
 **Cloud Run can't reach Cloud SQL**
-- Check `--vpc-connector=accountant-connector` is on the API deploy command
-- Verify connector and Cloud SQL are in the same region
-- Cloud SQL must have no public IP (`--no-assign-ip`)
+- Verify `--add-cloudsql-instances=accountant-agent-498810:us-central1:accountant-db` is on the deploy command
+- DATABASE_URL must use Unix socket format: `?host=/cloudsql/accountant-agent-498810:us-central1:accountant-db`
+- Service account must have `roles/cloudsql.client`
 
 **Redis connection refused**
 - Confirm `accountant-redis` Cloud Run service has `--ingress=internal`
