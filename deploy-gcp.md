@@ -1,12 +1,13 @@
 # Deploy to Google Cloud Platform
 
 This guide covers deploying the Accountant Agent to GCP using:
-- **Cloud Run** — API and Dashboard (serverless containers)
-- **Cloud SQL** — Postgres 16 (managed database)
-- **Memorystore for Redis** — managed Redis
-- **Google Cloud Storage** — receipt file storage (replaces local Docker volume)
+- **Cloud Run** — API, Dashboard, and Redis (containerised)
+- **Cloud SQL** — Postgres 16 (managed — required, Cloud Run is stateless)
+- **Cloud Storage** — receipt file storage (replaces local Docker volume)
 - **Artifact Registry** — Docker image storage
 - **Secret Manager** — API keys and credentials
+
+> **Why not Memorystore for Redis?** Redis only holds ephemeral session state (registration flow, batch counters, confirmation SIDs). Running it as a Cloud Run container saves ~$25/mo. If it restarts, active WhatsApp sessions are lost but no data is permanently affected.
 
 ---
 
@@ -15,17 +16,22 @@ This guide covers deploying the Accountant Agent to GCP using:
 ```
 Internet
   │
-  ├── Twilio webhook → Cloud Run (API) ──┬── Cloud SQL (Postgres)
-  │                                      ├── Memorystore (Redis)
-  │                                      └── Cloud Storage (receipt files)
+  ├── Twilio webhook  →  Cloud Run: accountant-api
+  │                             │
+  │                    ┌────────┼────────┐
+  │               Cloud SQL  Redis CR  GCS bucket
+  │              (Postgres)  (session)  (files)
   │
-  └── Browser → Cloud Run (Dashboard) → Cloud Run (API)
+  └── Browser  →  Cloud Run: accountant-dashboard
+                        │
+                   proxy /api/ → accountant-api URL
 ```
 
-- The API Cloud Run service is public (Twilio must POST to it)
-- The Dashboard Cloud Run service can be restricted to your IP or left public
-- Cloud SQL and Memorystore are private (VPC only, not internet-accessible)
-- All secrets stored in Secret Manager (no `.env` files in production)
+- API and Dashboard are public Cloud Run services
+- Cloud SQL is private (VPC only)
+- Redis runs as its own Cloud Run service (internal ingress only)
+- GCS bucket serves receipt files publicly (images/PDFs for the dashboard)
+- All secrets stored in Secret Manager
 
 ---
 
@@ -41,35 +47,29 @@ brew install google-cloud-sdk
 gcloud version
 ```
 
-### 2. Authenticate
+### 2. Authenticate and set project
 
 ```bash
 gcloud auth login
-gcloud auth configure-docker australia-southeast1-docker.pkg.dev
+
+# Set your existing project
+export PROJECT_ID=accountant-agent-498810
+gcloud config set project ${PROJECT_ID}
+
+# Set region (used throughout)
+export REGION=us-central1
+export REGISTRY=${REGION}-docker.pkg.dev/${PROJECT_ID}/accountant-agent
+
+# Configure Docker auth for Artifact Registry
+gcloud auth configure-docker ${REGION}-docker.pkg.dev
 ```
 
-> Replace `australia-southeast1` with your preferred region throughout this guide. Other options: `us-central1`, `europe-west1`, `asia-east1`.
-
-### 3. Set your project
-
-```bash
-# Create a new project (or use existing)
-gcloud projects create accountant-agent-prod --name="Accountant Agent"
-
-# Set as active project
-gcloud config set project accountant-agent-prod
-
-# Enable billing (required for Cloud Run, Cloud SQL, etc.)
-# Go to: https://console.cloud.google.com/billing
-```
-
-### 4. Enable required APIs
+### 3. Enable required APIs
 
 ```bash
 gcloud services enable \
   run.googleapis.com \
   sqladmin.googleapis.com \
-  redis.googleapis.com \
   storage.googleapis.com \
   artifactregistry.googleapis.com \
   secretmanager.googleapis.com \
@@ -79,17 +79,13 @@ gcloud services enable \
 
 ---
 
-## Step 1 — Artifact Registry (Docker Image Storage)
+## Step 1 — Artifact Registry
 
 ```bash
-# Create registry repository
 gcloud artifacts repositories create accountant-agent \
   --repository-format=docker \
-  --location=australia-southeast1 \
+  --location=${REGION} \
   --description="Accountant Agent Docker images"
-
-# Configure Docker auth
-gcloud auth configure-docker australia-southeast1-docker.pkg.dev
 ```
 
 ---
@@ -99,41 +95,32 @@ gcloud auth configure-docker australia-southeast1-docker.pkg.dev
 From the project root (`accountant-agent/`):
 
 ```bash
-# Set your project ID
-PROJECT_ID=accountant-agent-prod
-REGION=australia-southeast1
-REGISTRY=${REGION}-docker.pkg.dev/${PROJECT_ID}/accountant-agent
+# Apple Silicon (M1/M2/M3): add --platform linux/amd64 to both commands
 
-# Build and push API image
-docker build -t ${REGISTRY}/api:latest .
+# API
+docker build --platform linux/amd64 -t ${REGISTRY}/api:latest .
 docker push ${REGISTRY}/api:latest
 
-# Build and push Dashboard image
-docker build -t ${REGISTRY}/dashboard:latest ./dashboard
+# Dashboard (build without nginx.conf changes yet — we'll handle API URL via env var below)
+docker build --platform linux/amd64 -t ${REGISTRY}/dashboard:latest ./dashboard
 docker push ${REGISTRY}/dashboard:latest
 ```
 
-> For Apple Silicon (M1/M2/M3) Macs, add `--platform linux/amd64` to each build command:
-> ```bash
-> docker build --platform linux/amd64 -t ${REGISTRY}/api:latest .
-> docker build --platform linux/amd64 -t ${REGISTRY}/dashboard:latest ./dashboard
-> ```
-
 ---
 
-## Step 3 — VPC Network (for Cloud SQL + Memorystore)
+## Step 3 — VPC Network (for Cloud SQL)
 
-Cloud SQL and Memorystore require a VPC. Cloud Run connects via Serverless VPC Access.
+Cloud SQL requires a private VPC. Cloud Run connects via Serverless VPC Access Connector.
 
 ```bash
-# Create a VPC network (or use default)
+# Create VPC
 gcloud compute networks create accountant-vpc \
   --subnet-mode=auto
 
-# Create Serverless VPC Access connector (allows Cloud Run to reach private services)
+# Create VPC Access Connector (allows Cloud Run to reach Cloud SQL private IP)
 gcloud compute networks vpc-access connectors create accountant-connector \
   --network=accountant-vpc \
-  --region=australia-southeast1 \
+  --region=${REGION} \
   --range=10.8.0.0/28
 ```
 
@@ -142,12 +129,11 @@ gcloud compute networks vpc-access connectors create accountant-connector \
 ## Step 4 — Cloud SQL (Postgres)
 
 ```bash
-# Create Postgres 16 instance
-# db-f1-micro is the smallest (free tier eligible) — upgrade for production
+# Create Postgres 16 instance (private VPC only, no public IP)
 gcloud sql instances create accountant-db \
   --database-version=POSTGRES_16 \
   --tier=db-f1-micro \
-  --region=australia-southeast1 \
+  --region=${REGION} \
   --network=accountant-vpc \
   --no-assign-ip \
   --storage-type=SSD \
@@ -157,138 +143,146 @@ gcloud sql instances create accountant-db \
 gcloud sql databases create accountant \
   --instance=accountant-db
 
-# Create database user
+# Create user (choose a strong password)
 gcloud sql users create accountant \
   --instance=accountant-db \
   --password=CHANGE_THIS_PASSWORD
 
-# Get the private IP of your Cloud SQL instance (needed for DATABASE_URL)
+# Get the private IP (save this — needed for DATABASE_URL)
 gcloud sql instances describe accountant-db \
   --format="value(ipAddresses[0].ipAddress)"
 ```
 
-Note the private IP — you'll need it for `DATABASE_URL`.
-
-**Database URL format for Cloud Run:**
+**DATABASE_URL format:**
 ```
 postgresql+asyncpg://accountant:CHANGE_THIS_PASSWORD@<PRIVATE_IP>/accountant
 ```
 
-### Run DB Migration (after first deploy)
+### DB Migration
 
-After deploying the API, run the `ALTER TABLE` to add the `company_name` and `company_id` columns that were added after the initial schema:
+Run after first deploy. Adds columns added after the initial schema:
 
 ```bash
-# Connect via Cloud SQL Auth Proxy (or use Cloud Shell)
 gcloud sql connect accountant-db --user=accountant --database=accountant
 
-# Then run:
+# Inside psql:
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS company_name VARCHAR(200);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS company_id VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS drive_folder_id VARCHAR(200);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'whatsapp';
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS drive_file_id VARCHAR(200);
 \q
 ```
 
 ---
 
-## Step 5 — Memorystore for Redis
+## Step 5 — Redis on Cloud Run
+
+Run Redis as a Cloud Run service with internal-only ingress. No VPC connector needed — Cloud Run services can call each other internally via `https://<service>-<hash>-<region>.a.run.app`.
 
 ```bash
-# Create Redis instance (basic tier, 1GB)
-gcloud redis instances create accountant-redis \
-  --size=1 \
-  --region=australia-southeast1 \
-  --network=projects/${PROJECT_ID}/global/networks/accountant-vpc \
-  --redis-version=redis_7_0
+gcloud run deploy accountant-redis \
+  --image=redis:7-alpine \
+  --platform=managed \
+  --region=${REGION} \
+  --port=6379 \
+  --memory=256Mi \
+  --cpu=1 \
+  --min-instances=1 \
+  --max-instances=1 \
+  --ingress=internal \
+  --args="--save,60,1,--loglevel,warning"
 
-# Get the Redis host IP
-gcloud redis instances describe accountant-redis \
-  --region=australia-southeast1 \
-  --format="value(host)"
+# Get the internal Redis URL
+gcloud run services describe accountant-redis \
+  --region=${REGION} \
+  --format="value(status.url)"
 ```
 
-Note the host IP — **Redis URL format:**
-```
-redis://<HOST_IP>:6379/0
-```
+> Redis on Cloud Run uses HTTPS internally. The Redis client needs to connect via SSL. The `REDIS_URL` for Cloud Run will be:
+> ```
+> rediss://:<no-password>@<service-url-without-https>:443/0
+> ```
+> Note: `rediss://` (double-s) for TLS. No password needed since ingress is internal-only.
 
 ---
 
 ## Step 6 — Cloud Storage (Receipt Files)
 
-Cloud Run containers are stateless — the local Docker volume won't work. Receipt files must be stored in GCS.
-
 ```bash
-# Create bucket (use your project ID for uniqueness)
-gcloud storage buckets create gs://accountant-agent-receipts-${PROJECT_ID} \
-  --location=australia-southeast1 \
+# Create bucket
+gcloud storage buckets create gs://accountant-receipts-${PROJECT_ID} \
+  --location=${REGION} \
   --uniform-bucket-level-access
 
-# Make bucket publicly readable (so dashboard can load receipt images/PDFs)
-# OR serve files through a signed URL / via the API (more secure)
+# Make publicly readable (so dashboard can display receipt images/PDFs)
 gcloud storage buckets add-iam-policy-binding \
-  gs://accountant-agent-receipts-${PROJECT_ID} \
+  gs://accountant-receipts-${PROJECT_ID} \
   --member=allUsers \
   --role=roles/storage.objectViewer
 ```
 
-> **Note:** Public bucket means anyone with the file URL can access receipt files. For a production system, consider serving files through the API with authentication instead.
-
-### Update the app to use GCS
-
-The current `local_storage.py` saves files to `/app/receipts/` — this won't persist on Cloud Run. You have two options:
-
-**Option A (Recommended): Use GCS client** — `app/services/gcs_client.py` already exists in the codebase. Set `GCS_BUCKET_NAME` in your environment and update `process_receipt.py` to call `gcs_client.upload_receipt()` instead of `local_storage.upload_receipt()`.
-
-**Option B (Simpler):** Mount a GCS bucket as a volume in Cloud Run (in preview as of 2026 — check availability).
-
-For now, set `GCS_BUCKET_NAME=accountant-agent-receipts-${PROJECT_ID}` in your secrets and the app will use GCS if the bucket name is set.
+> Files are served directly from GCS (`storage.googleapis.com`). The dashboard links to them directly. If you want private files served through the API, remove the public binding and add a signed URL endpoint — leave this as a future hardening step.
 
 ---
 
-## Step 7 — Secret Manager
+## Step 7 — Google Drive Credentials in Secret Manager
 
-Store all sensitive values in Secret Manager instead of a `.env` file.
+The service account JSON for Google Drive must be stored as a secret and mounted as a file.
 
 ```bash
-# Helper function
-create_secret() {
-  echo -n "$2" | gcloud secrets create "$1" --data-file=- --replication-policy=automatic
-}
-
-# Create all secrets (replace values with your actual keys)
-create_secret TWILIO_ACCOUNT_SID       "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-create_secret TWILIO_AUTH_TOKEN        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-create_secret TWILIO_FROM_NUMBER       "+1415xxxxxxx"
-create_secret GEMINI_API_KEY           "AIzaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-create_secret ANTHROPIC_API_KEY        "sk-ant-xxxxxxxxxxxxxxxxxxxx"
-create_secret LLAMA_CLOUD_API_KEY      "llx-xxxxxxxxxxxxxxxxxxxx"
-create_secret DATABASE_URL             "postgresql+asyncpg://accountant:CHANGE_THIS_PASSWORD@<PRIVATE_IP>/accountant"
-create_secret REDIS_URL                "redis://<REDIS_HOST_IP>:6379/0"
-create_secret GCS_BUCKET_NAME         "accountant-agent-receipts-${PROJECT_ID}"
+# Store the service account JSON as a secret
+gcloud secrets create GOOGLE_CREDENTIALS_JSON \
+  --data-file=./accountant-agent-498810-1cbc6f7bf4c0.json \
+  --replication-policy=automatic
 ```
 
 ---
 
-## Step 8 — Service Account for Cloud Run
+## Step 8 — Secret Manager (All Secrets)
 
 ```bash
-# Create service account for the API
+# Helper
+create_secret() {
+  echo -n "$2" | gcloud secrets create "$1" \
+    --data-file=- \
+    --replication-policy=automatic
+}
+
+# Fill in your actual values
+create_secret TWILIO_ACCOUNT_SID      "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+create_secret TWILIO_AUTH_TOKEN       "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+create_secret TWILIO_FROM_NUMBER      "+1415xxxxxxx"
+create_secret GEMINI_API_KEY          "AIzaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+create_secret ANTHROPIC_API_KEY       "sk-ant-xxxxxxxxxxxxxxxxxxxx"
+create_secret LLAMA_CLOUD_API_KEY     "llx-xxxxxxxxxxxxxxxxxxxx"
+create_secret DATABASE_URL            "postgresql+asyncpg://accountant:CHANGE_THIS_PASSWORD@<PRIVATE_IP>/accountant"
+create_secret REDIS_URL               "rediss://<redis-service-url-without-https>:443/0"
+create_secret GCS_BUCKET_NAME         "accountant-receipts-${PROJECT_ID}"
+create_secret GOOGLE_DRIVE_FOLDER_ID  "your-root-drive-folder-id"
+```
+
+---
+
+## Step 9 — Service Account for Cloud Run API
+
+```bash
 gcloud iam service-accounts create accountant-api-sa \
   --display-name="Accountant Agent API"
 
-SA_EMAIL=accountant-api-sa@${PROJECT_ID}.iam.gserviceaccount.com
+export SA_EMAIL=accountant-api-sa@${PROJECT_ID}.iam.gserviceaccount.com
 
-# Grant access to Secret Manager
+# Secret Manager access
 gcloud projects add-iam-policy-binding ${PROJECT_ID} \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="roles/secretmanager.secretAccessor"
 
-# Grant access to Cloud Storage
+# Cloud Storage access
 gcloud projects add-iam-policy-binding ${PROJECT_ID} \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="roles/storage.objectAdmin"
 
-# Grant access to Cloud SQL
+# Cloud SQL access
 gcloud projects add-iam-policy-binding ${PROJECT_ID} \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="roles/cloudsql.client"
@@ -296,14 +290,11 @@ gcloud projects add-iam-policy-binding ${PROJECT_ID} \
 
 ---
 
-## Step 9 — Deploy API to Cloud Run
+## Step 10 — Deploy API to Cloud Run
+
+The Google Drive service account JSON is mounted as a secret volume at `/secrets/credentials.json` — same path as local dev.
 
 ```bash
-PROJECT_ID=accountant-agent-prod
-REGION=australia-southeast1
-REGISTRY=${REGION}-docker.pkg.dev/${PROJECT_ID}/accountant-agent
-SA_EMAIL=accountant-api-sa@${PROJECT_ID}.iam.gserviceaccount.com
-
 gcloud run deploy accountant-api \
   --image=${REGISTRY}/api:latest \
   --platform=managed \
@@ -327,43 +318,45 @@ ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,\
 LLAMA_CLOUD_API_KEY=LLAMA_CLOUD_API_KEY:latest,\
 DATABASE_URL=DATABASE_URL:latest,\
 REDIS_URL=REDIS_URL:latest,\
-GCS_BUCKET_NAME=GCS_BUCKET_NAME:latest \
-  --set-env-vars=ENVIRONMENT=production
+GCS_BUCKET_NAME=GCS_BUCKET_NAME:latest,\
+GOOGLE_DRIVE_FOLDER_ID=GOOGLE_DRIVE_FOLDER_ID:latest,\
+/secrets/credentials.json=GOOGLE_CREDENTIALS_JSON:latest \
+  --set-env-vars=ENVIRONMENT=production,GOOGLE_SERVICE_ACCOUNT_FILE=/secrets/credentials.json,DRIVE_POLL_INTERVAL_SECONDS=300
 
-# Get the deployed URL
-gcloud run services describe accountant-api \
+# Save the API URL
+export API_URL=$(gcloud run services describe accountant-api \
   --region=${REGION} \
-  --format="value(status.url)"
+  --format="value(status.url)")
+echo "API URL: ${API_URL}"
 ```
 
-The URL will look like: `https://accountant-api-xxxxxxxxxx-ts.a.run.app`
-
-> **`--min-instances=1`** prevents cold starts. The auto-confirm background task (`asyncio.create_task`) requires the process to stay alive for 5 minutes — set min instances to 1 so the container isn't shut down between requests.
+> **`--min-instances=1`** is required. The Drive poller (`asyncio.create_task`) and auto-confirm timers run as background tasks — they need the container to stay alive between requests.
 
 ---
 
-## Step 10 — Deploy Dashboard to Cloud Run
+## Step 11 — Deploy Dashboard to Cloud Run
 
-The dashboard nginx config proxies `/api/` to `http://api:8000` by hostname — this won't work on Cloud Run. You need to update the nginx config to proxy to the Cloud Run API URL.
+The dashboard nginx config proxies `/api/` to the API by hostname (`http://api:8000`) — this only works in Docker Compose. For Cloud Run, we pass the API URL as a build arg so nginx is configured at build time.
 
-### Update nginx.conf for production
+### Update nginx.conf to use a build arg
 
-Edit `dashboard/nginx.conf` before building:
+Edit `dashboard/nginx.conf`:
 
 ```nginx
 server {
     listen 80;
     root /usr/share/nginx/html;
+    index index.html;
 
     location /api/ {
-        proxy_pass https://accountant-api-xxxxxxxxxx-ts.a.run.app/api/;
-        proxy_set_header Host accountant-api-xxxxxxxxxx-ts.a.run.app;
+        proxy_pass API_URL_PLACEHOLDER/api/;
+        proxy_set_header Host $proxy_host;
         proxy_ssl_server_name on;
     }
 
     location /files/ {
-        proxy_pass https://accountant-api-xxxxxxxxxx-ts.a.run.app/files/;
-        proxy_set_header Host accountant-api-xxxxxxxxxx-ts.a.run.app;
+        proxy_pass API_URL_PLACEHOLDER/files/;
+        proxy_set_header Host $proxy_host;
         proxy_ssl_server_name on;
     }
 
@@ -373,10 +366,32 @@ server {
 }
 ```
 
-Then rebuild and push the dashboard image:
+Update `dashboard/Dockerfile` to substitute the placeholder at build time:
+
+```dockerfile
+# Build stage
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+# Serve stage
+FROM nginx:alpine
+ARG API_URL
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+RUN sed -i "s|API_URL_PLACEHOLDER|${API_URL}|g" /etc/nginx/conf.d/default.conf
+EXPOSE 80
+```
+
+Build and push with your API URL:
 
 ```bash
-docker build --platform linux/amd64 -t ${REGISTRY}/dashboard:latest ./dashboard
+docker build --platform linux/amd64 \
+  --build-arg API_URL=${API_URL} \
+  -t ${REGISTRY}/dashboard:latest ./dashboard
 docker push ${REGISTRY}/dashboard:latest
 ```
 
@@ -400,155 +415,131 @@ gcloud run services describe accountant-dashboard \
 
 ---
 
-## Step 11 — Update Twilio Webhook
-
-Go to [console.twilio.com](https://console.twilio.com) → Messaging → Senders → WhatsApp Sandbox (or your number):
-
-- **Webhook URL:** `https://accountant-api-xxxxxxxxxx-ts.a.run.app/webhook`
-- **HTTP method:** `POST`
-
----
-
-## Step 12 — Run Database Migration
-
-Connect to Cloud SQL and add the columns that were added after initial schema creation:
+## Step 12 — Run DB Migration
 
 ```bash
-# Open Cloud Shell or use gcloud sql connect
 gcloud sql connect accountant-db --user=accountant --database=accountant
 
 # Inside psql:
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS company_name VARCHAR(200);
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS company_id VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS drive_folder_id VARCHAR(200);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'whatsapp';
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS drive_file_id VARCHAR(200);
 \q
 ```
 
+> If this is a fresh database, SQLAlchemy's `create_all` in `init_db()` creates all tables automatically on first startup — no migration needed.
+
 ---
 
-## Step 13 — Verify Deployment
+## Step 13 — Update Twilio Webhook
+
+Go to [console.twilio.com](https://console.twilio.com) → Messaging → Senders → WhatsApp Sandbox:
+
+- **Webhook URL:** `${API_URL}/webhook`
+- **HTTP method:** `POST`
+
+---
+
+## Step 14 — Verify
 
 ```bash
-# Check API health
-curl https://accountant-api-xxxxxxxxxx-ts.a.run.app/health
+# Health check
+curl ${API_URL}/health
 
-# Check Cloud Run logs
-gcloud logging read \
-  "resource.type=cloud_run_revision AND resource.labels.service_name=accountant-api" \
-  --limit=50 \
-  --format="value(textPayload)"
-
-# Or stream logs
+# Stream logs
 gcloud beta run services logs tail accountant-api --region=${REGION}
+gcloud beta run services logs tail accountant-redis --region=${REGION}
 ```
 
 ---
 
-## Using GCP Services with the App
+## Cost Estimate (Monthly, us-central1)
 
-### Gemini API on GCP
-
-Gemini is called via the Gemini API (not Vertex AI) using your `GEMINI_API_KEY` from Google AI Studio. No GCP-specific setup needed — the existing `gemini_client.py` works as-is.
-
-If you want to use **Vertex AI** instead (billed to your GCP project, no separate API key):
-1. Enable: `gcloud services enable aiplatform.googleapis.com`
-2. Grant the service account `roles/aiplatform.user`
-3. Update `gemini_client.py` to use the `google-cloud-aiplatform` SDK with ADC (Application Default Credentials)
-
-### Anthropic (Claude) API on GCP
-
-Claude is called via the Anthropic API directly using `ANTHROPIC_API_KEY`. Store it in Secret Manager (done in Step 7). No GCP-specific integration needed.
-
-Alternatively, Claude is available through **Vertex AI Model Garden**:
-1. Enable Vertex AI and accept the Claude model terms in the console
-2. Use the `anthropic-sdk` with `vertex=True` and your GCP project credentials
-
-### Twilio on GCP
-
-Twilio works identically on GCP — it POSTs to your Cloud Run URL. The only change is updating the webhook URL in the Twilio console to point to your Cloud Run API service URL.
-
-For **Twilio signature validation** to work correctly on Cloud Run, ensure:
-- `ENVIRONMENT=production` is set (enables validation in `webhook.py`)
-- The `X-Forwarded-Proto` and `Host` headers are passed correctly — Cloud Run does this automatically
-
----
-
-## Cost Estimate (Monthly)
-
-| Service | Tier | Approx. Cost |
+| Service | Config | Approx. Cost |
 |---|---|---|
-| Cloud Run (API, min 1 instance) | 1 vCPU, 1GB RAM | ~$15–25/mo |
-| Cloud Run (Dashboard) | 256MB, scales to 0 | < $1/mo |
-| Cloud SQL (Postgres) | db-f1-micro | ~$10/mo |
-| Memorystore (Redis) | 1GB basic | ~$25/mo |
+| Cloud Run — API (min 1 instance) | 1 vCPU, 1GB RAM | ~$15–25/mo |
+| Cloud Run — Dashboard | 256MB, scales to 0 | < $1/mo |
+| Cloud Run — Redis | 256MB, min 1 instance | ~$5–8/mo |
+| Cloud SQL — Postgres | db-f1-micro, 10GB SSD | ~$10/mo |
 | Cloud Storage | First 5GB free | < $1/mo |
 | Artifact Registry | First 0.5GB free | < $1/mo |
 | Secret Manager | First 6 versions free | < $1/mo |
-| **Total** | | **~$50–60/mo** |
+| **Total** | | **~$32–46/mo** |
 
-> Memorystore is the largest cost. For a lower-cost alternative, run Redis as a sidecar container in Cloud Run (preview feature) or use a small Compute Engine VM for Redis.
+> Compared to using Memorystore (~$25/mo for Redis), running Redis on Cloud Run saves ~$20/mo.
 
 ---
 
 ## Redeployment (After Code Changes)
 
 ```bash
-PROJECT_ID=accountant-agent-prod
-REGION=australia-southeast1
-REGISTRY=${REGION}-docker.pkg.dev/${PROJECT_ID}/accountant-agent
+export PROJECT_ID=accountant-agent-498810
+export REGION=us-central1
+export REGISTRY=${REGION}-docker.pkg.dev/${PROJECT_ID}/accountant-agent
+export API_URL=$(gcloud run services describe accountant-api --region=${REGION} --format="value(status.url)")
 
-# Rebuild and push API
+# Redeploy API
 docker build --platform linux/amd64 -t ${REGISTRY}/api:latest .
 docker push ${REGISTRY}/api:latest
-gcloud run services update-traffic accountant-api \
-  --region=${REGION} --to-latest
+gcloud run deploy accountant-api --image=${REGISTRY}/api:latest --region=${REGION} --platform=managed
 
-# Rebuild and push Dashboard
-docker build --platform linux/amd64 -t ${REGISTRY}/dashboard:latest ./dashboard
+# Redeploy Dashboard
+docker build --platform linux/amd64 --build-arg API_URL=${API_URL} -t ${REGISTRY}/dashboard:latest ./dashboard
 docker push ${REGISTRY}/dashboard:latest
-gcloud run services update-traffic accountant-dashboard \
-  --region=${REGION} --to-latest
+gcloud run deploy accountant-dashboard --image=${REGISTRY}/dashboard:latest --region=${REGION} --platform=managed
 ```
-
-Or use the deploy command again — it updates in-place with zero downtime.
 
 ---
 
 ## Environment Variables Reference (Production)
 
-| Variable | Source | Value |
+| Variable | Source | Notes |
 |---|---|---|
-| `TWILIO_ACCOUNT_SID` | Secret Manager | `ACxxxxxxxx...` |
-| `TWILIO_AUTH_TOKEN` | Secret Manager | `xxxxxxxx...` |
-| `TWILIO_FROM_NUMBER` | Secret Manager | `+1415xxxxxxx` |
-| `GEMINI_API_KEY` | Secret Manager | `AIzaxxxxxxxx...` |
-| `ANTHROPIC_API_KEY` | Secret Manager | `sk-ant-xxxxxxxx...` |
-| `LLAMA_CLOUD_API_KEY` | Secret Manager | `llx-xxxxxxxx...` |
-| `DATABASE_URL` | Secret Manager | `postgresql+asyncpg://accountant:pass@<PRIVATE_IP>/accountant` |
-| `REDIS_URL` | Secret Manager | `redis://<REDIS_HOST>:6379/0` |
-| `GCS_BUCKET_NAME` | Secret Manager | `accountant-agent-receipts-<project>` |
-| `ENVIRONMENT` | Env var (inline) | `production` |
+| `TWILIO_ACCOUNT_SID` | Secret Manager | |
+| `TWILIO_AUTH_TOKEN` | Secret Manager | |
+| `TWILIO_FROM_NUMBER` | Secret Manager | |
+| `GEMINI_API_KEY` | Secret Manager | |
+| `ANTHROPIC_API_KEY` | Secret Manager | |
+| `LLAMA_CLOUD_API_KEY` | Secret Manager | Present but pipeline bypasses it |
+| `DATABASE_URL` | Secret Manager | `postgresql+asyncpg://...@<PRIVATE_IP>/accountant` |
+| `REDIS_URL` | Secret Manager | `rediss://<cloud-run-url>:443/0` |
+| `GCS_BUCKET_NAME` | Secret Manager | Triggers GCS upload instead of local disk |
+| `GOOGLE_DRIVE_FOLDER_ID` | Secret Manager | Root Drive folder for customer folders |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | Env var | `/secrets/credentials.json` |
+| `/secrets/credentials.json` | Secret volume | Google service account JSON |
+| `ENVIRONMENT` | Env var | `production` — enables Twilio signature validation |
+| `DRIVE_POLL_INTERVAL_SECONDS` | Env var | `300` (5 min) for production |
 
 ---
 
 ## Troubleshooting
 
-**Cloud Run can't reach Cloud SQL / Redis**
-- Verify the VPC connector is attached: check `--vpc-connector` in the deploy command
-- Verify Cloud SQL has no public IP (`--no-assign-ip`)
-- Check the connector is in the same region as Cloud Run
+**Cloud Run can't reach Cloud SQL**
+- Check `--vpc-connector=accountant-connector` is on the API deploy command
+- Verify connector and Cloud SQL are in the same region
+- Cloud SQL must have no public IP (`--no-assign-ip`)
+
+**Redis connection refused**
+- Confirm `accountant-redis` Cloud Run service has `--ingress=internal`
+- Use `rediss://` (TLS) not `redis://` — Cloud Run internal traffic is HTTPS
+- Check `--min-instances=1` on Redis service so it doesn't spin down
 
 **Twilio signature validation failing (403)**
-- Ensure `ENVIRONMENT=production` is set
-- Cloud Run sits behind a load balancer — the request URL seen by the app must match what Twilio signed. Use `X-Forwarded-Proto` header or hardcode the public URL in the validator
+- `ENVIRONMENT=production` must be set
+- Cloud Run forwards the correct `Host` header automatically
 
-**Background tasks (auto-confirm) not running**
-- Cloud Run with `--min-instances=0` will shut down the container after the request returns, killing background `asyncio` tasks
-- Set `--min-instances=1` to keep the container alive
+**Drive poller not starting**
+- Check `GOOGLE_DRIVE_FOLDER_ID` is set in secrets
+- Check `/secrets/credentials.json` is mounted correctly
+- Check logs: `gcloud beta run services logs tail accountant-api --region=${REGION}`
 
-**Receipt files not persisting**
-- Cloud Run containers are ephemeral — local storage is lost on restart
-- Must use GCS bucket (`GCS_BUCKET_NAME` env var) rather than local `/app/receipts/`
+**Receipt files not showing in dashboard**
+- Verify GCS bucket has `allUsers` → `objectViewer` IAM binding
+- Check `GCS_BUCKET_NAME` secret is correct
+- File URLs will be `https://storage.googleapis.com/<bucket>/receipts/...`
 
-**Cold start latency**
-- First request after idle can be slow (2–5s)
-- `--min-instances=1` prevents cold starts but costs more
+**Background tasks (auto-confirm, Drive poller) dying**
+- `--min-instances=1` on the API service prevents container shutdown between requests
+- Without this, asyncio background tasks are killed when the container idles

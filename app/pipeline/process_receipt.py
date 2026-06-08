@@ -5,7 +5,17 @@ import logging
 from app.pipeline.ocr import fetch_media, ocr_pdf
 from app.pipeline.extract import extract
 from app.pipeline.normalize import normalize
-from app.services.local_storage import upload_receipt
+from app.config import get_settings as _get_settings
+
+
+async def upload_receipt(file_bytes: bytes, phone_number: str, message_sid: str, content_type: str) -> str | None:
+    """Route to GCS or local storage depending on config."""
+    settings = _get_settings()
+    if settings.gcs_bucket_name:
+        from app.services.gcs_storage import upload_receipt as gcs_upload
+        return await gcs_upload(file_bytes, phone_number, message_sid, content_type, settings.gcs_bucket_name)
+    from app.services.local_storage import upload_receipt as local_upload
+    return await local_upload(file_bytes, phone_number, message_sid, content_type)
 from app.services.db_service import upsert_receipt, upsert_receipt_from_drive, update_receipt_status
 from app.services.twilio_client import send_summary, send_error, send_confirm_prompt
 from app.services.redis_client import get_redis
