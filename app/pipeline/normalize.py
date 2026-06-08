@@ -18,10 +18,8 @@ def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, d
         tax = round(cost / 11, 2)
 
     # --- Currency ---
-    # Use AI-extracted currency if valid, otherwise fall back to customer's default
-    currency = str(raw.get("currency") or "").strip().upper()
-    if not currency or currency == "$":
-        currency = default_currency
+    # Always use the customer's default currency — ignore AI-extracted currency
+    currency = default_currency
 
     # --- Transaction type ---
     # If vendor text contains the customer's own company_id or company_name → income

@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import asyncio
 import logging
+import logging.config
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,10 @@ from app.routes.dashboard import router as dashboard_router
 from app.db import init_db
 from app.config import get_settings
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 logger = logging.getLogger(__name__)
 RECEIPTS_DIR = Path("/app/receipts")
 
@@ -20,10 +25,13 @@ async def lifespan(app: FastAPI):
     await init_db()
 
     settings = get_settings()
+    logger.info(f"Drive config: folder_id={bool(settings.google_drive_folder_id)} sa_file={bool(settings.google_service_account_file)} interval={settings.drive_poll_interval_seconds}")
     if settings.google_drive_folder_id and settings.google_service_account_file:
         from app.services.drive_poller import poll_drive_forever
         asyncio.create_task(poll_drive_forever())
         logger.info("Drive poller started")
+    else:
+        logger.warning("Drive poller NOT started — missing GOOGLE_DRIVE_FOLDER_ID or GOOGLE_SERVICE_ACCOUNT_FILE")
 
     yield
 
