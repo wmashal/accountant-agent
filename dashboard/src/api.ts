@@ -9,6 +9,7 @@ export interface CustomerSummary {
   drive_folder_id: string | null
   drive_share_link: string | null
   source: string
+  default_currency: string
   total_receipts: number
   total_income: number
   total_expense: number
@@ -38,6 +39,7 @@ export interface CreateCustomerData {
   company_name?: string
   company_id?: string
   phone_number?: string
+  default_currency: string
 }
 
 export const api = {
@@ -68,7 +70,7 @@ export const api = {
       body: JSON.stringify({ display_name }),
     }).then(r => r.json()),
 
-  updateCustomerProfile: (id: number, patch: { display_name?: string; company_name?: string; company_id?: string; phone_number?: string }) =>
+  updateCustomerProfile: (id: number, patch: { display_name?: string; company_name?: string; company_id?: string; phone_number?: string; default_currency?: string }) =>
     fetch(`${BASE}/customers/${id}/profile`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

@@ -100,8 +100,15 @@ async def process_single_receipt(
             raw_result, model = await extract(file_bytes, content_type, ocr_text=None)
             logger.info(f"Extraction complete: model={model} vendor={raw_result.get('vendor')} cost={raw_result.get('cost')}")
 
+            # Look up customer's default currency
+            from app.models.receipt import Customer
+            from sqlalchemy import select as sa_select
+            cust = await session.execute(sa_select(Customer).where(Customer.phone_number == from_number))
+            customer = cust.scalar_one_or_none()
+            default_currency = customer.default_currency if customer else "USD"
+
             # Normalize
-            data = normalize(raw_result, extraction_model=model, raw_ocr=ocr_text)
+            data = normalize(raw_result, extraction_model=model, raw_ocr=ocr_text, default_currency=default_currency)
             logger.info(f"Normalized: {data.vendor} {data.cost} {data.currency}")
 
             # Save file
@@ -218,7 +225,7 @@ async def _process_drive_single_page(
             raw_result, model = await extract(file_bytes, content_type, ocr_text=None)
             logger.info(f"Drive extraction: model={model} vendor={raw_result.get('vendor')} cost={raw_result.get('cost')}")
 
-            data = normalize(raw_result, extraction_model=model, raw_ocr=None)
+            data = normalize(raw_result, extraction_model=model, raw_ocr=None, default_currency=customer.default_currency)
 
             # Store file locally (same as WhatsApp path)
             phone_key = f"drive_{customer.id}"

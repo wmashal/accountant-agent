@@ -20,6 +20,7 @@ class Customer(Base):
     company_id: Mapped[Optional[str]] = mapped_column(sa.String(100), nullable=True)
     drive_folder_id: Mapped[Optional[str]] = mapped_column(sa.String(200), nullable=True)
     source: Mapped[str] = mapped_column(sa.String(20), default="whatsapp")
+    default_currency: Mapped[str] = mapped_column(sa.String(10), default="USD")
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

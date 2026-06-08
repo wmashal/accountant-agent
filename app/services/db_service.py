@@ -45,6 +45,7 @@ async def create_customer(
     company_id: str | None,
     phone_number: str | None,
     drive_folder_id: str | None,
+    default_currency: str = "USD",
 ) -> Customer:
     """Create a customer from the dashboard. Phone is optional for Drive-only customers."""
     effective_phone = phone_number or f"drive_{uuid.uuid4().hex[:12]}"
@@ -55,6 +56,7 @@ async def create_customer(
         company_id=company_id,
         drive_folder_id=drive_folder_id,
         source="drive" if not phone_number else "both",
+        default_currency=default_currency,
     )
     session.add(customer)
     await session.commit()

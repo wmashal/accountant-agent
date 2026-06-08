@@ -24,6 +24,7 @@ class CustomerSummary(BaseModel):
     drive_folder_id: Optional[str]
     drive_share_link: Optional[str]
     source: str
+    default_currency: str
     total_receipts: int
     total_income: float
     total_expense: float
@@ -64,6 +65,7 @@ class UpdateCustomerProfileRequest(BaseModel):
     company_name: Optional[str] = None
     company_id: Optional[str] = None
     phone_number: Optional[str] = None
+    default_currency: Optional[str] = None
 
 
 class CreateCustomerRequest(BaseModel):
@@ -71,6 +73,7 @@ class CreateCustomerRequest(BaseModel):
     company_name: Optional[str] = None
     company_id: Optional[str] = None
     phone_number: Optional[str] = None
+    default_currency: str = "USD"
 
 
 # --- Helpers ---
@@ -94,6 +97,7 @@ def _customer_summary(c: Customer, receipts: list) -> CustomerSummary:
         drive_folder_id=c.drive_folder_id,
         drive_share_link=_drive_share_link(c.drive_folder_id),
         source=c.source,
+        default_currency=c.default_currency,
         total_receipts=len(receipts),
         total_income=round(income, 2),
         total_expense=round(expense, 2),
@@ -131,6 +135,7 @@ async def create_customer_endpoint(
         company_id=body.company_id,
         phone_number=body.phone_number,
         drive_folder_id=drive_folder_id,
+        default_currency=body.default_currency,
     )
     return _customer_summary(customer, [])
 
@@ -266,5 +271,9 @@ async def update_customer_profile(
             # If this customer was Drive-only, they now have a real phone
             if customer.source == "drive":
                 customer.source = "both"
+    if body.default_currency is not None:
+        currency = body.default_currency.strip().upper()
+        if currency in ("ILS", "USD"):
+            customer.default_currency = currency
     await session.commit()
     return {"ok": True}

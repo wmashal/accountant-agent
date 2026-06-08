@@ -11,7 +11,7 @@ export default function App() {
 
   // Header edit state
   const [editingProfile, setEditingProfile] = useState(false)
-  const [profileForm, setProfileForm] = useState({ display_name: "", company_name: "", company_id: "", phone_number: "" })
+  const [profileForm, setProfileForm] = useState({ display_name: "", company_name: "", company_id: "", phone_number: "", default_currency: "USD" })
 
   // Inline receipt edit state
   const [editingReceiptId, setEditingReceiptId] = useState<number | null>(null)
@@ -23,7 +23,7 @@ export default function App() {
 
   // Add Customer modal
   const [showAddCustomer, setShowAddCustomer] = useState(false)
-  const [addForm, setAddForm] = useState<CreateCustomerData>({ display_name: "", company_name: "", company_id: "", phone_number: "" })
+  const [addForm, setAddForm] = useState<CreateCustomerData>({ display_name: "", company_name: "", company_id: "", phone_number: "", default_currency: "USD" })
   const [addLoading, setAddLoading] = useState(false)
   const [newCustomerDriveLink, setNewCustomerDriveLink] = useState<string | null>(null)
 
@@ -45,6 +45,7 @@ export default function App() {
       company_name: c.company_name || "",
       company_id: c.company_id || "",
       phone_number: c.phone_number.startsWith("drive_") ? "" : c.phone_number,
+      default_currency: c.default_currency || "USD",
     })
     const data = await api.getReceipts(c.id)
     setReceipts(data)
@@ -107,11 +108,12 @@ export default function App() {
         company_name: addForm.company_name || undefined,
         company_id: addForm.company_id || undefined,
         phone_number: addForm.phone_number || undefined,
+        default_currency: addForm.default_currency,
       }
       const created = await api.createCustomer(payload)
       setNewCustomerDriveLink(created.drive_share_link)
       await loadCustomers()
-      setAddForm({ display_name: "", company_name: "", company_id: "", phone_number: "" })
+      setAddForm({ display_name: "", company_name: "", company_id: "", phone_number: "", default_currency: "USD" })
     } finally {
       setAddLoading(false)
     }
@@ -120,7 +122,7 @@ export default function App() {
   const closeAddCustomer = () => {
     setShowAddCustomer(false)
     setNewCustomerDriveLink(null)
-    setAddForm({ display_name: "", company_name: "", company_id: "", phone_number: "" })
+    setAddForm({ display_name: "", company_name: "", company_id: "", phone_number: "", default_currency: "USD" })
   }
 
   const filteredCustomers = customers.filter(c => {
@@ -205,6 +207,15 @@ export default function App() {
                     onChange={e => setAddForm(p => ({ ...p, phone_number: e.target.value }))}
                     placeholder="+61400000000"
                   />
+                </label>
+                <label>Default Currency
+                  <select
+                    value={addForm.default_currency}
+                    onChange={e => setAddForm(p => ({ ...p, default_currency: e.target.value }))}
+                  >
+                    <option value="USD">USD — US Dollar</option>
+                    <option value="ILS">ILS — Israeli Shekel</option>
+                  </select>
                 </label>
                 <div className="add-customer-btns">
                   <button type="submit" className="btn-save" disabled={addLoading}>
@@ -313,6 +324,15 @@ export default function App() {
                         onChange={e => setProfileForm(p => ({ ...p, phone_number: e.target.value }))}
                         placeholder="+61400000000"
                       />
+                    </label>
+                    <label>Default Currency
+                      <select
+                        value={profileForm.default_currency}
+                        onChange={e => setProfileForm(p => ({ ...p, default_currency: e.target.value }))}
+                      >
+                        <option value="USD">USD — US Dollar</option>
+                        <option value="ILS">ILS — Israeli Shekel</option>
+                      </select>
                     </label>
                     <div className="profile-edit-btns">
                       <button className="btn-save" onClick={saveProfile}>Save</button>

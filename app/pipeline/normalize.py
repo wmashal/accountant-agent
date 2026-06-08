@@ -7,7 +7,7 @@ from app.models.receipt import ReceiptData
 logger = logging.getLogger(__name__)
 
 
-def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None) -> ReceiptData:
+def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, default_currency: str = "USD") -> ReceiptData:
     vendor = str(raw.get("vendor", "Unknown")).strip()
     cost = _parse_float(raw.get("cost"))
     receipt_language = raw.get("receipt_language", "unknown")
@@ -18,9 +18,10 @@ def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None) -
         tax = round(cost / 11, 2)
 
     # --- Currency ---
-    currency = str(raw.get("currency") or "AUD").strip().upper()
-    if currency == "$":
-        currency = "AUD"
+    # Use AI-extracted currency if valid, otherwise fall back to customer's default
+    currency = str(raw.get("currency") or "").strip().upper()
+    if not currency or currency == "$":
+        currency = default_currency
 
     # --- Date ---
     date = _parse_date(raw.get("date", ""))
