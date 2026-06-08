@@ -1,6 +1,6 @@
 import logging
 import uuid
-from sqlalchemy import select, update
+from sqlalchemy import select, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.receipt import Customer, Receipt, ReceiptData
@@ -8,11 +8,28 @@ from app.models.receipt import Customer, Receipt, ReceiptData
 logger = logging.getLogger(__name__)
 
 
-async def get_or_create_customer(session: AsyncSession, phone_number: str) -> Customer:
+async def find_customer_by_identity(
+    session: AsyncSession,
+    phone_number: str,
+    company_id: str | None = None,
+) -> Customer | None:
+    """
+    Look up a customer by phone number OR company_id (if provided and non-empty).
+    Returns the first match, or None.
+    """
+    conditions = [Customer.phone_number == phone_number]
+    if company_id:
+        conditions.append(
+            (Customer.company_id == company_id) & Customer.company_id.isnot(None)
+        )
     result = await session.execute(
-        select(Customer).where(Customer.phone_number == phone_number)
+        select(Customer).where(or_(*conditions))
     )
-    customer = result.scalar_one_or_none()
+    return result.scalars().first()
+
+
+async def get_or_create_customer(session: AsyncSession, phone_number: str) -> Customer:
+    customer = await find_customer_by_identity(session, phone_number)
     if not customer:
         customer = Customer(phone_number=phone_number)
         session.add(customer)
@@ -181,18 +198,22 @@ async def update_customer_profile(
     company_name: str | None,
     company_id: str | None,
 ):
-    result = await session.execute(
-        select(Customer).where(Customer.phone_number == phone_number)
-    )
-    customer = result.scalar_one_or_none()
+    # Try to find existing customer by phone OR company_id
+    customer = await find_customer_by_identity(session, phone_number, company_id or None)
     if not customer:
         customer = Customer(phone_number=phone_number)
         session.add(customer)
-    customer.display_name = display_name or None
-    customer.company_name = company_name or None
-    customer.company_id = company_id or None
+    else:
+        # If matched by company_id but phone differs, update phone and mark as both
+        if customer.phone_number != phone_number:
+            logger.info(f"Matched existing customer id={customer.id} via company_id={company_id}, linking phone {phone_number}")
+            customer.phone_number = phone_number
+            customer.source = "both"
+    customer.display_name = display_name or customer.display_name or None
+    customer.company_name = company_name or customer.company_name or None
+    customer.company_id = company_id or customer.company_id or None
     await session.commit()
-    logger.info(f"Customer profile updated: {phone_number}")
+    logger.info(f"Customer profile updated: id={customer.id} phone={phone_number}")
 
 
 async def update_receipt_status(session: AsyncSession, message_sid: str, status: str):

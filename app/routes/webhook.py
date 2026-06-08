@@ -7,6 +7,7 @@ from app.config import get_settings
 from app.pipeline.process_receipt import process_receipt
 from app.services.db_service import (
     create_receipt_row,
+    find_customer_by_identity,
     get_or_create_customer,
     update_customer_profile,
     update_receipt_status,
