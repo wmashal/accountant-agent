@@ -55,7 +55,7 @@ async def accountant_login(body: LoginRequest, session: AsyncSession = Depends(g
 @router.post("/api/admin/login", response_model=LoginResponse)
 async def admin_login(body: LoginRequest):
     settings = get_settings()
-    if body.username != settings.admin_username or body.password != settings.admin_password:
+    if body.username != settings.admin_username.strip() or body.password != settings.admin_password.strip():
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = create_token(

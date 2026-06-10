@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     # Twilio
     twilio_account_sid: str
     twilio_auth_token: str
-    twilio_from_number: str
+    twilio_from_number: str = ""
 
     # LlamaParse
     llama_cloud_api_key: str
