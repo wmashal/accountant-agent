@@ -6,8 +6,8 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-EXTRACTION_PROMPT = """You are a receipt data extraction assistant.
-The receipt may be written in any language. Read it in its original language and return all values as described.
+EXTRACTION_PROMPT = """You are an invoice data extraction assistant.
+The invoice may be written in any language. Read it in its original language and return all values as described.
 Return ONLY valid JSON matching this exact schema — no markdown fences, no explanation.
 
 {
@@ -17,22 +17,22 @@ Return ONLY valid JSON matching this exact schema — no markdown fences, no exp
   "cost": 0.00,
   "tax": 0.00,
   "tax_included": false,
-  "currency": "AUD",
+  "tax_rate": null,
+  "currency": "USD",
   "date": "string",
-  "abn": "string or null",
   "receipt_language": "en"
 }
 
 Rules:
-- vendor: the business/person who issued the receipt (transliterate to English if not Latin script)
+- vendor: the business/person who issued the invoice (transliterate to English if not Latin script)
 - payer: the business/person who paid or is billed — look for fields like "לכבוד", "מקור", "bill to", "client", "customer ID", "ח.פ", "ע.מ" — include any ID numbers found there; null if not shown
 - receipt_number: the invoice/receipt number if shown (e.g. "קבלה מס'", "invoice #", "receipt no"); null if not present
 - cost: total amount including tax, as a number
-- tax: the GST/VAT/tax line if explicitly shown; null if not shown
-- tax_included: true if receipt says GST/tax included or equivalent in any language
-- currency: ISO 4217 code; default to AUD if not shown
-- date: as printed on the receipt in any format
-- abn: as printed including spaces; null if not present
+- tax: the GST/VAT/tax amount if explicitly shown as a separate line; null if not shown
+- tax_included: true if invoice says tax/VAT is included in the price (e.g. "כולל מע\"מ", "VAT included", "tax inclusive")
+- tax_rate: the VAT/tax rate percentage as a decimal if shown or can be inferred (e.g. 0.17 for 17%, 0.18 for 18%); null if unknown
+- currency: ISO 4217 code; default to USD if not shown
+- date: as printed on the invoice in any format
 - receipt_language: BCP 47 code (e.g. en, ar, zh, fr, ja, he)"""
 
 

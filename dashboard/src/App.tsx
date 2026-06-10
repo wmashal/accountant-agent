@@ -2,6 +2,17 @@ import { useState, useEffect, useCallback } from "react"
 import { api, CustomerSummary, Receipt, CreateCustomerData } from "./api"
 import "./App.css"
 
+// Format a YYYY-MM string to a human-readable month label
+function formatMonth(ym: string) {
+  if (ym === "Unknown") return "Unknown Date"
+  try {
+    const [y, m] = ym.split("-")
+    return new Date(Number(y), Number(m) - 1, 1).toLocaleString("default", { month: "long", year: "numeric" })
+  } catch {
+    return ym
+  }
+}
+
 export default function App() {
   const [customers, setCustomers] = useState<CustomerSummary[]>([])
   const [selected, setSelected] = useState<CustomerSummary | null>(null)
@@ -13,12 +24,17 @@ export default function App() {
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileForm, setProfileForm] = useState({ display_name: "", company_name: "", company_id: "", phone_number: "", default_currency: "USD" })
 
-  // Inline receipt edit state
+  // Inline invoice edit state
   const [editingReceiptId, setEditingReceiptId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState<Partial<Receipt>>({})
 
-  // Filter tabs
+  // Filter state
   const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all")
+  const [groupBy, setGroupBy] = useState<"invoice" | "upload">("upload")
+  const [invoiceMonthFilter, setInvoiceMonthFilter] = useState<string>("all")
+  const [uploadMonthFilter, setUploadMonthFilter] = useState<string>("all")
+  const [supplierFilter, setSupplierFilter] = useState<string>("all")
+
   // Collapsed month groups
   const [collapsedMonths, setCollapsedMonths] = useState<Set<string>>(new Set())
 
@@ -43,13 +59,13 @@ export default function App() {
 
   const refreshCustomer = async () => {
     if (!selected) return
-    const [customers, receipts] = await Promise.all([
+    const [updatedCustomers, updatedReceipts] = await Promise.all([
       api.getCustomers(),
       api.getReceipts(selected.id),
     ])
-    setCustomers(customers)
-    setReceipts(receipts)
-    const updated = customers.find(c => c.id === selected.id)
+    setCustomers(updatedCustomers)
+    setReceipts(updatedReceipts)
+    const updated = updatedCustomers.find(c => c.id === selected.id)
     if (updated) setSelected(updated)
   }
 
@@ -57,6 +73,9 @@ export default function App() {
     setSelected(c)
     setEditingProfile(false)
     setEditingReceiptId(null)
+    setInvoiceMonthFilter("all")
+    setUploadMonthFilter("all")
+    setSupplierFilter("all")
     setProfileForm({
       display_name: c.display_name || "",
       company_name: c.company_name || "",
@@ -95,9 +114,10 @@ export default function App() {
       vendor: r.vendor || "",
       cost: r.cost ?? undefined,
       tax: r.tax ?? undefined,
+      tax_rate: r.tax_rate ?? undefined,
       currency: r.currency,
       date: r.date || "",
-      abn: r.abn || "",
+      receipt_number: r.receipt_number || "",
       transaction_type: r.transaction_type,
       status: r.status,
     })
@@ -111,7 +131,7 @@ export default function App() {
   }
 
   const deleteReceipt = async (r: Receipt) => {
-    if (!confirm(`Delete receipt from "${r.vendor || 'Unknown'}"? This will also remove the file from storage.`)) return
+    if (!confirm(`Delete invoice from "${r.vendor || 'Unknown'}"? This will also remove the file from storage.`)) return
     await api.deleteReceipt(r.id)
     setReceipts(prev => prev.filter(x => x.id !== r.id))
     await loadCustomers()
@@ -163,10 +183,20 @@ export default function App() {
   const totalIncome = receipts.filter(r => r.transaction_type === "income" && r.status === "confirmed").reduce((s, r) => s + (r.cost || 0), 0)
   const totalExpense = receipts.filter(r => r.transaction_type === "expense" && r.status === "confirmed").reduce((s, r) => s + (r.cost || 0), 0)
 
+  // Derive unique filter options from current receipts
+  const invoiceMonths = Array.from(new Set(receipts.map(r => r.date && r.date.length >= 7 ? r.date.slice(0, 7) : "Unknown"))).sort((a, b) => b.localeCompare(a))
+  const uploadMonths = Array.from(new Set(receipts.map(r => r.upload_date && r.upload_date.length >= 7 ? r.upload_date.slice(0, 7) : "Unknown"))).sort((a, b) => b.localeCompare(a))
+  const suppliers = Array.from(new Set(receipts.map(r => r.vendor || "Unknown"))).sort()
+
   const sourceLabel = (source: string) => {
     if (source === "whatsapp") return <span className="source-badge source-whatsapp" title="WhatsApp">📱</span>
     if (source === "drive") return <span className="source-badge source-drive" title="Google Drive">📁</span>
     return <><span className="source-badge source-whatsapp" title="WhatsApp">📱</span><span className="source-badge source-drive" title="Google Drive">📁</span></>
+  }
+
+  const formatTaxRate = (rate: number | null) => {
+    if (rate == null) return "—"
+    return `${(rate * 100).toFixed(0)}%`
   }
 
   return (
@@ -177,9 +207,9 @@ export default function App() {
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <button className="modal-close" onClick={() => setPreviewUrl(null)}>✕</button>
             {previewIsPdf ? (
-              <iframe src={previewUrl} title="Receipt PDF" className="modal-iframe" />
+              <iframe src={previewUrl} title="Invoice PDF" className="modal-iframe" />
             ) : (
-              <img src={previewUrl} alt="Receipt" className="modal-img" />
+              <img src={previewUrl} alt="Invoice" className="modal-img" />
             )}
           </div>
         </div>
@@ -197,7 +227,7 @@ export default function App() {
                 <a href={newCustomerDriveLink} target="_blank" rel="noreferrer" className="drive-link">
                   📁 Open Drive Folder
                 </a>
-                <p className="drive-hint">Ask the customer to upload their receipts to this folder.</p>
+                <p className="drive-hint">Ask the customer to upload their invoices to this folder.</p>
                 <button className="btn-save" onClick={closeAddCustomer}>Done</button>
               </div>
             ) : (
@@ -256,7 +286,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="sidebar-header">
           <h1>Accountant</h1>
-          <p className="subtitle">Receipt Dashboard</p>
+          <p className="subtitle">Invoice Dashboard</p>
         </div>
         <div className="search-wrap">
           <input
@@ -315,7 +345,7 @@ export default function App() {
         {!selected ? (
           <div className="empty-state">
             <h2>Select a customer</h2>
-            <p>Choose a customer from the sidebar to view their receipts</p>
+            <p>Choose a customer from the sidebar to view their invoices</p>
           </div>
         ) : (
           <>
@@ -411,38 +441,123 @@ export default function App() {
                   <div className="card-label">Net</div>
                   <div className="card-value">{(totalIncome - totalExpense).toFixed(2)}</div>
                 </div>
-                <button className="btn-refresh" onClick={refreshCustomer} title="Refresh receipts">↻ Refresh</button>
+                <button className="btn-refresh" onClick={refreshCustomer} title="Refresh invoices">↻ Refresh</button>
               </div>
             </div>
 
             <div className="receipts-table-wrap">
-              {/* Filter tabs */}
-              <div className="type-filter-tabs">
-                {(["all", "income", "expense"] as const).map(tab => (
-                  <button
-                    key={tab}
-                    className={`type-filter-tab ${typeFilter === tab ? "active" : ""} ${tab !== "all" ? tab : ""}`}
-                    onClick={() => setTypeFilter(tab)}
-                  >
-                    {tab === "all" ? "All" : tab === "income" ? "↑ Income" : "↓ Expense"}
-                    <span className="tab-count">
-                      {receipts.filter(r => tab === "all" || r.transaction_type === tab).length}
-                    </span>
-                  </button>
-                ))}
+              {/* Filter bar */}
+              <div className="filter-bar">
+                {/* Type tabs */}
+                <div className="type-filter-tabs">
+                  {(["all", "income", "expense"] as const).map(tab => (
+                    <button
+                      key={tab}
+                      className={`type-filter-tab ${typeFilter === tab ? "active" : ""} ${tab !== "all" ? tab : ""}`}
+                      onClick={() => setTypeFilter(tab)}
+                    >
+                      {tab === "all" ? "All" : tab === "income" ? "↑ Income" : "↓ Expense"}
+                      <span className="tab-count">
+                        {receipts.filter(r => tab === "all" || r.transaction_type === tab).length}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Dropdown filters */}
+                <div className="dropdown-filters">
+                  <label className="filter-label">
+                    Group by
+                    <select
+                      className="filter-select"
+                      value={groupBy}
+                      onChange={e => setGroupBy(e.target.value as "invoice" | "upload")}
+                    >
+                      <option value="upload">Upload Month</option>
+                      <option value="invoice">Invoice Month</option>
+                    </select>
+                  </label>
+
+                  <label className="filter-label">
+                    Invoice Month
+                    <select
+                      className="filter-select"
+                      value={invoiceMonthFilter}
+                      onChange={e => setInvoiceMonthFilter(e.target.value)}
+                    >
+                      <option value="all">All</option>
+                      {invoiceMonths.map(m => (
+                        <option key={m} value={m}>{formatMonth(m)}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="filter-label">
+                    Upload Month
+                    <select
+                      className="filter-select"
+                      value={uploadMonthFilter}
+                      onChange={e => setUploadMonthFilter(e.target.value)}
+                    >
+                      <option value="all">All</option>
+                      {uploadMonths.map(m => (
+                        <option key={m} value={m}>{formatMonth(m)}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="filter-label">
+                    Supplier
+                    <select
+                      className="filter-select"
+                      value={supplierFilter}
+                      onChange={e => setSupplierFilter(e.target.value)}
+                    >
+                      <option value="all">All</option>
+                      {suppliers.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
               </div>
 
-              {/* Receipts grouped by YYYY-MM */}
+              {/* Invoices grouped by selected month dimension */}
               {(() => {
-                const filtered = receipts.filter(r => typeFilter === "all" || r.transaction_type === typeFilter)
-                if (filtered.length === 0) return <p className="no-data">No receipts</p>
+                // Apply all filters
+                let filtered = receipts.filter(r => typeFilter === "all" || r.transaction_type === typeFilter)
 
-                // Group by YYYY-MM (receipts with no date go to "Unknown")
+                if (invoiceMonthFilter !== "all") {
+                  filtered = filtered.filter(r => {
+                    const m = r.date && r.date.length >= 7 ? r.date.slice(0, 7) : "Unknown"
+                    return m === invoiceMonthFilter
+                  })
+                }
+
+                if (uploadMonthFilter !== "all") {
+                  filtered = filtered.filter(r => {
+                    const m = r.upload_date && r.upload_date.length >= 7 ? r.upload_date.slice(0, 7) : "Unknown"
+                    return m === uploadMonthFilter
+                  })
+                }
+
+                if (supplierFilter !== "all") {
+                  filtered = filtered.filter(r => (r.vendor || "Unknown") === supplierFilter)
+                }
+
+                if (filtered.length === 0) return <p className="no-data">No invoices</p>
+
+                // Group by chosen dimension
                 const groups: Record<string, typeof filtered> = {}
                 filtered.forEach(r => {
-                  const month = r.date && r.date.length >= 7 ? r.date.slice(0, 7) : "Unknown"
-                  if (!groups[month]) groups[month] = []
-                  groups[month].push(r)
+                  let key: string
+                  if (groupBy === "upload") {
+                    key = r.upload_date && r.upload_date.length >= 7 ? r.upload_date.slice(0, 7) : "Unknown"
+                  } else {
+                    key = r.date && r.date.length >= 7 ? r.date.slice(0, 7) : "Unknown"
+                  }
+                  if (!groups[key]) groups[key] = []
+                  groups[key].push(r)
                 })
                 const sortedMonths = Object.keys(groups).sort((a, b) => b.localeCompare(a))
 
@@ -451,6 +566,7 @@ export default function App() {
                   const monthReceipts = groups[month]
                   const monthIncome = monthReceipts.filter(r => r.transaction_type === "income" && r.status === "confirmed").reduce((s, r) => s + (r.cost || 0), 0)
                   const monthExpense = monthReceipts.filter(r => r.transaction_type === "expense" && r.status === "confirmed").reduce((s, r) => s + (r.cost || 0), 0)
+                  const monthTax = monthReceipts.filter(r => r.status === "confirmed" && r.tax != null).reduce((s, r) => s + (r.tax || 0), 0)
                   const ccy = monthReceipts[0]?.currency || ""
 
                   return (
@@ -464,9 +580,12 @@ export default function App() {
                         })}
                       >
                         <span className="month-toggle">{collapsed ? "▶" : "▼"}</span>
-                        <span className="month-label">{month === "Unknown" ? "Unknown Date" : month}</span>
+                        <span className="month-label">
+                          {formatMonth(month)}
+                          {groupBy === "upload" ? <span className="month-dim-badge"> upload</span> : <span className="month-dim-badge"> invoice date</span>}
+                        </span>
                         <span className="month-stats">
-                          <span className="month-count">{monthReceipts.length} receipts</span>
+                          <span className="month-count">{monthReceipts.length} invoices</span>
                           {monthIncome > 0 && <span className="income-badge">+{ccy} {monthIncome.toFixed(2)}</span>}
                           {monthExpense > 0 && <span className="expense-badge">-{ccy} {monthExpense.toFixed(2)}</span>}
                         </span>
@@ -476,12 +595,13 @@ export default function App() {
                         <table className="receipts-table">
                           <thead>
                             <tr>
-                              <th>Date</th>
-                              <th>Receipt #</th>
-                              <th>Vendor</th>
+                              <th>Invoice Date</th>
+                              <th>Upload Date</th>
+                              <th>Invoice #</th>
+                              <th>Supplier</th>
                               <th>Amount</th>
+                              <th>Tax Rate</th>
                               <th>Tax</th>
-                              <th>ABN</th>
                               <th>Type</th>
                               <th>Status</th>
                               <th>File</th>
@@ -493,14 +613,21 @@ export default function App() {
                               editingReceiptId === r.id ? (
                                 <tr key={r.id} className="edit-row">
                                   <td><input className="edit-input" value={editForm.date || ""} onChange={e => setEditForm(p => ({ ...p, date: e.target.value }))} placeholder="YYYY-MM-DD" /></td>
-                                  <td>{r.receipt_number || "—"}</td>
-                                  <td><input className="edit-input" value={editForm.vendor || ""} onChange={e => setEditForm(p => ({ ...p, vendor: e.target.value }))} placeholder="Vendor" /></td>
+                                  <td>{r.upload_date ? r.upload_date.slice(0, 10) : "—"}</td>
+                                  <td><input className="edit-input" value={editForm.receipt_number || ""} onChange={e => setEditForm(p => ({ ...p, receipt_number: e.target.value }))} placeholder="Invoice #" /></td>
+                                  <td><input className="edit-input" value={editForm.vendor || ""} onChange={e => setEditForm(p => ({ ...p, vendor: e.target.value }))} placeholder="Supplier" /></td>
                                   <td>
                                     <input className="edit-input edit-input-sm" type="number" value={editForm.cost ?? ""} onChange={e => setEditForm(p => ({ ...p, cost: parseFloat(e.target.value) || undefined }))} placeholder="Amount" />
                                     <input className="edit-input edit-input-xs" value={editForm.currency || ""} onChange={e => setEditForm(p => ({ ...p, currency: e.target.value }))} placeholder="CCY" maxLength={3} />
                                   </td>
+                                  <td>
+                                    <select className="edit-select" value={editForm.tax_rate != null ? String(editForm.tax_rate) : ""} onChange={e => setEditForm(p => ({ ...p, tax_rate: e.target.value ? parseFloat(e.target.value) : undefined }))}>
+                                      <option value="">—</option>
+                                      <option value="0.17">17%</option>
+                                      <option value="0.18">18%</option>
+                                    </select>
+                                  </td>
                                   <td><input className="edit-input edit-input-sm" type="number" value={editForm.tax ?? ""} onChange={e => setEditForm(p => ({ ...p, tax: parseFloat(e.target.value) || undefined }))} placeholder="Tax" /></td>
-                                  <td><input className="edit-input" value={editForm.abn || ""} onChange={e => setEditForm(p => ({ ...p, abn: e.target.value }))} placeholder="ABN" /></td>
                                   <td>
                                     <select className="edit-select" value={editForm.transaction_type} onChange={e => setEditForm(p => ({ ...p, transaction_type: e.target.value as "income" | "expense" }))}>
                                       <option value="income">Income</option>
@@ -530,11 +657,12 @@ export default function App() {
                               ) : (
                                 <tr key={r.id}>
                                   <td>{r.date || "—"}</td>
+                                  <td>{r.upload_date ? r.upload_date.slice(0, 10) : "—"}</td>
                                   <td>{r.receipt_number || "—"}</td>
                                   <td>{r.vendor || "—"}</td>
                                   <td className="amount">{r.cost != null ? `${r.currency} ${r.cost.toFixed(2)}` : "—"}</td>
+                                  <td>{formatTaxRate(r.tax_rate)}</td>
                                   <td>{r.tax != null ? `${r.currency} ${r.tax.toFixed(2)}` : "—"}</td>
-                                  <td>{r.abn || "—"}</td>
                                   <td>
                                     <button className={`type-btn ${r.transaction_type}`} onClick={() => toggleType(r)} title="Click to toggle">
                                       {r.transaction_type === "income" ? "↑ Income" : "↓ Expense"}
@@ -558,6 +686,18 @@ export default function App() {
                                 </tr>
                               )
                             ))}
+                            {/* Monthly totals row */}
+                            <tr className="month-total-row">
+                              <td colSpan={4}><strong>Total ({formatMonth(month)})</strong></td>
+                              <td className="amount">
+                                {monthIncome > 0 && <span className="income-total">+{ccy} {monthIncome.toFixed(2)}</span>}
+                                {monthIncome > 0 && monthExpense > 0 && " / "}
+                                {monthExpense > 0 && <span className="expense-total">-{ccy} {monthExpense.toFixed(2)}</span>}
+                              </td>
+                              <td>—</td>
+                              <td>{monthTax > 0 ? `${ccy} ${monthTax.toFixed(2)}` : "—"}</td>
+                              <td colSpan={4}></td>
+                            </tr>
                           </tbody>
                         </table>
                       )}

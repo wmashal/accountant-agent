@@ -37,9 +37,10 @@ class ReceiptOut(BaseModel):
     vendor: Optional[str]
     cost: Optional[float]
     tax: Optional[float]
+    tax_rate: Optional[float]
     currency: str
     date: Optional[str]
-    abn: Optional[str]
+    upload_date: Optional[str]
     receipt_number: Optional[str]
     receipt_language: Optional[str]
     extraction_model: Optional[str]
@@ -54,9 +55,10 @@ class UpdateReceiptRequest(BaseModel):
     vendor: Optional[str] = None
     cost: Optional[float] = None
     tax: Optional[float] = None
+    tax_rate: Optional[float] = None
     currency: Optional[str] = None
     date: Optional[str] = None
-    abn: Optional[str] = None
+    receipt_number: Optional[str] = None
     transaction_type: Optional[str] = None
     status: Optional[str] = None
 
@@ -169,9 +171,10 @@ async def list_customer_receipts(customer_id: int, session: AsyncSession = Depen
             vendor=r.vendor,
             cost=r.cost,
             tax=r.tax,
+            tax_rate=r.tax_rate,
             currency=r.currency,
             date=r.date,
-            abn=r.abn,
+            upload_date=r.upload_date.isoformat() if r.upload_date else None,
             receipt_number=r.receipt_number,
             receipt_language=r.receipt_language,
             extraction_model=r.extraction_model,
@@ -202,12 +205,14 @@ async def update_receipt(
         receipt.cost = body.cost
     if body.tax is not None:
         receipt.tax = body.tax
+    if body.tax_rate is not None:
+        receipt.tax_rate = body.tax_rate
     if body.currency is not None:
         receipt.currency = body.currency.strip() or receipt.currency
     if body.date is not None:
         receipt.date = body.date.strip() or receipt.date
-    if body.abn is not None:
-        receipt.abn = body.abn.strip() or None
+    if body.receipt_number is not None:
+        receipt.receipt_number = body.receipt_number.strip() or None
     if body.transaction_type is not None:
         if body.transaction_type not in ("income", "expense"):
             raise HTTPException(status_code=400, detail="transaction_type must be income or expense")
@@ -222,9 +227,10 @@ async def update_receipt(
         vendor=receipt.vendor,
         cost=receipt.cost,
         tax=receipt.tax,
+        tax_rate=receipt.tax_rate,
         currency=receipt.currency,
         date=receipt.date,
-        abn=receipt.abn,
+        upload_date=receipt.upload_date.isoformat() if receipt.upload_date else None,
         receipt_number=receipt.receipt_number,
         receipt_language=receipt.receipt_language,
         extraction_model=receipt.extraction_model,

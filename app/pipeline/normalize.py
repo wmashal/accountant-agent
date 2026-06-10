@@ -1,4 +1,3 @@
-import re
 import logging
 from typing import Optional
 from dateutil import parser as dateparser
@@ -14,10 +13,16 @@ def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, d
     cost = _parse_float(raw.get("cost"))
     receipt_language = raw.get("receipt_language", "unknown")
 
-    # --- Tax / GST ---
+    # --- Tax / VAT ---
+    # Only populate tax if it is explicitly shown on the invoice.
+    # If VAT-inclusive but no explicit tax line, leave tax=None.
+    # tax_rate is stored so the UI can calculate tax on demand.
     tax = _parse_float(raw.get("tax"))
-    if tax is None and raw.get("tax_included"):
-        tax = round(cost / 11, 2)
+    tax_rate = _parse_float(raw.get("tax_rate"))
+    # If tax not shown but tax_rate is known and invoice is tax-inclusive, calculate tax
+    if tax is None and tax_rate is not None and raw.get("tax_included") and cost:
+        # tax_rate is fraction of gross amount: tax = cost * rate / (1 + rate)
+        tax = round(cost * tax_rate / (1 + tax_rate), 2)
 
     # --- Currency ---
     # Always use the customer's default currency — ignore AI-extracted currency
@@ -35,20 +40,13 @@ def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, d
     # --- Date ---
     date = _parse_date(raw.get("date", ""))
 
-    # --- ABN ---
-    abn_raw = str(raw.get("abn") or "").strip()
-    abn_digits = re.sub(r"\D", "", abn_raw)
-    abn_valid = len(abn_digits) == 11 and _validate_abn(abn_digits)
-    abn = abn_digits if abn_valid else None
-
     return ReceiptData(
         vendor=vendor,
         cost=cost,
         tax=tax,
+        tax_rate=tax_rate,
         currency=currency,
         date=date,
-        abn=abn,
-        abn_raw=abn_raw if not abn_valid and abn_raw else None,
         receipt_number=receipt_number,
         receipt_language=receipt_language,
         extraction_model=extraction_model,
@@ -75,10 +73,3 @@ def _parse_date(value: str) -> str:
         logger.warning(f"Could not parse date: {value!r}")
         return str(value)
 
-
-def _validate_abn(abn: str) -> bool:
-    """ATO ABN checksum validation."""
-    weights = [10, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
-    digits = [int(d) for d in abn]
-    digits[0] -= 1
-    return sum(d * w for d, w in zip(digits, weights)) % 89 == 0
