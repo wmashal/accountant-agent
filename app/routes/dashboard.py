@@ -343,3 +343,28 @@ async def update_customer_profile(
             customer.default_currency = currency
     await session.commit()
     return {"ok": True}
+
+
+@router.delete("/customers/{customer_id}", status_code=204)
+async def delete_customer(
+    customer_id: int,
+    session: AsyncSession = Depends(get_session),
+    current: dict = Depends(get_current_accountant),
+):
+    accountant_id = int(current["sub"])
+    result = await session.execute(
+        select(Customer).where(Customer.id == customer_id, Customer.accountant_id == accountant_id)
+    )
+    customer = result.scalar_one_or_none()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    # Delete all receipts for this customer first
+    receipts_result = await session.execute(
+        select(Receipt).where(Receipt.customer_id == customer_id)
+    )
+    for receipt in receipts_result.scalars().all():
+        await session.delete(receipt)
+
+    await session.delete(customer)
+    await session.commit()
