@@ -48,6 +48,7 @@ class CreateAccountantRequest(BaseModel):
 
 
 class UpdateAccountantRequest(BaseModel):
+    username: Optional[str] = None
     display_name: Optional[str] = None
     company_name: Optional[str] = None
     email: Optional[str] = None
@@ -189,6 +190,15 @@ async def update_accountant(
     if not a:
         raise HTTPException(status_code=404, detail="Accountant not found")
 
+    if body.username is not None:
+        username = body.username.strip()
+        if username:
+            existing = (await session.execute(
+                select(Accountant).where(Accountant.username == username, Accountant.id != accountant_id)
+            )).scalar_one_or_none()
+            if existing:
+                raise HTTPException(status_code=400, detail="Username already taken")
+            a.username = username
     if body.display_name is not None:
         a.display_name = body.display_name.strip() or None
     if body.company_name is not None:
