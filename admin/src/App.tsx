@@ -82,7 +82,7 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
         {page.name === 'dashboard' && <DashboardPage />}
         {page.name === 'accountants' && <AccountantsListPage onSelect={id => nav({ name: 'detail', id })} onCreate={() => nav({ name: 'create' })} />}
         {page.name === 'create' && <CreateAccountantPage onBack={() => nav({ name: 'accountants' })} onCreated={id => nav({ name: 'detail', id })} />}
-        {page.name === 'detail' && <AccountantDetailPage id={page.id} onBack={() => nav({ name: 'accountants' })} />}
+        {page.name === 'detail' && <AccountantDetailPage accountantId={page.id} onBack={() => nav({ name: 'accountants' })} />}
       </main>
     </div>
   )

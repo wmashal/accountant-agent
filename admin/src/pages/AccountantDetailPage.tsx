@@ -1,150 +1,334 @@
-import { useState, useEffect, useRef } from 'react'
-import { adminApi, AccountantOut, UpdateAccountantData } from '../api'
+import { useEffect, useRef, useState } from 'react'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, PieChart, Pie, Cell,
+} from 'recharts'
+import { adminApi, AccountantOut, AccountantAnalytics } from '../api'
 
 interface Props {
-  id: number
+  accountantId: number
   onBack: () => void
 }
 
-export default function AccountantDetailPage({ id, onBack }: Props) {
-  const [accountant, setAccountant] = useState<AccountantOut | null>(null)
+const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#84cc16', '#ec4899', '#14b8a6']
+
+function StatCard({ label, value, sub, color = '#4f46e5' }: { label: string; value: string | number; sub?: string; color?: string }) {
+  return (
+    <div style={{
+      background: '#fff', borderRadius: 12, padding: '20px 24px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.08)', borderLeft: `4px solid ${color}`,
+      minWidth: 140, flex: 1,
+    }}>
+      <div style={{ fontSize: 13, color: '#6b7280', fontWeight: 500, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 28, fontWeight: 700, color: '#111827' }}>{value}</div>
+      {sub && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>{sub}</div>}
+    </div>
+  )
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <h3 style={{ margin: '28px 0 14px', fontSize: 15, fontWeight: 600, color: '#374151', letterSpacing: 0.3 }}>
+      {children}
+    </h3>
+  )
+}
+
+export default function AccountantDetailPage({ accountantId, onBack }: Props) {
+  const [acct, setAcct] = useState<AccountantOut | null>(null)
+  const [analytics, setAnalytics] = useState<AccountantAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
-  const [form, setForm] = useState<UpdateAccountantData & { new_password?: string }>({})
+  const [form, setForm] = useState<Record<string, string | boolean>>({})
   const fileRef = useRef<HTMLInputElement>(null)
-  const [logoUploading, setLogoUploading] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    adminApi.getAccountant(id)
-      .then(a => {
-        setAccountant(a)
+    Promise.all([adminApi.getAccountant(accountantId), adminApi.getAnalytics(accountantId)])
+      .then(([a, an]) => {
+        setAcct(a)
+        setAnalytics(an)
         setForm({
-          display_name: a.display_name || '',
-          company_name: a.company_name || '',
-          email: a.email || '',
-          google_drive_root_folder_id: a.google_drive_root_folder_id || '',
-          twilio_from_number: a.twilio_from_number || '',
+          username: a.username ?? '',
+          display_name: a.display_name ?? '',
+          company_name: a.company_name ?? '',
+          email: a.email ?? '',
+          google_drive_root_folder_id: a.google_drive_root_folder_id ?? '',
+          twilio_from_number: a.twilio_from_number ?? '',
           gemini_api_key: '',
           default_currency: a.default_currency,
           is_active: a.is_active,
           new_password: '',
         })
-        setLoading(false)
       })
-      .catch(e => { setError(e.message); setLoading(false) })
-  }, [id])
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [accountantId])
 
-  const set = (k: string, v: string | boolean) => setForm(f => ({ ...f, [k]: v }))
-
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault()
+  async function handleSave() {
+    if (!acct) return
     setSaving(true)
-    setSaveMsg('')
     try {
-      const patch: UpdateAccountantData = {
-        display_name: form.display_name || undefined,
-        company_name: form.company_name || undefined,
-        email: form.email || undefined,
-        google_drive_root_folder_id: form.google_drive_root_folder_id || undefined,
-        twilio_from_number: form.twilio_from_number || undefined,
-        gemini_api_key: form.gemini_api_key || undefined,
-        default_currency: form.default_currency,
-        is_active: form.is_active,
-        new_password: form.new_password || undefined,
+      const patch: Record<string, unknown> = {}
+      const fields = ['username', 'display_name', 'company_name', 'email', 'google_drive_root_folder_id', 'twilio_from_number', 'default_currency']
+      for (const f of fields) {
+        const v = form[f]
+        if (typeof v === 'string' && v !== (acct as unknown as Record<string, unknown>)[f]) patch[f] = v || undefined
       }
-      const updated = await adminApi.updateAccountant(id, patch)
-      setAccountant(updated)
+      if (form.is_active !== acct.is_active) patch.is_active = form.is_active
+      if (form.new_password) patch.new_password = form.new_password
+      if (form.gemini_api_key) patch.gemini_api_key = form.gemini_api_key
+      const updated = await adminApi.updateAccountant(acct.id, patch)
+      setAcct(updated)
       setForm(f => ({ ...f, new_password: '', gemini_api_key: '' }))
-      setSaveMsg('Saved!')
+      setSaveMsg('Saved successfully')
     } catch (e: unknown) {
-      setSaveMsg(e instanceof Error ? e.message : 'Error saving')
+      setSaveMsg(`Error: ${e instanceof Error ? e.message : 'Unknown error'}`)
     } finally {
       setSaving(false)
-      setTimeout(() => setSaveMsg(''), 3000)
+      if (timerRef.current) clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => setSaveMsg(''), 4000)
     }
   }
 
-  const uploadLogo = async (file: File) => {
-    setLogoUploading(true)
+  async function handleLogo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !acct) return
     try {
-      const res = await adminApi.uploadLogo(id, file)
-      setAccountant(a => a ? { ...a, logo_url: res.logo_url } : a)
-    } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Upload failed')
-    } finally {
-      setLogoUploading(false)
-    }
+      const { logo_url } = await adminApi.uploadLogo(acct.id, file)
+      setAcct(a => a ? { ...a, logo_url } : a)
+    } catch (e) { console.error(e) }
   }
 
-  if (loading) return <div>Loading\u2026</div>
-  if (error) return <div style={{ color: 'red' }}>{error}</div>
-  if (!accountant) return null
+  if (loading) return <div style={{ padding: 40, color: '#6b7280' }}>Loading…</div>
+  if (!acct) return <div style={{ padding: 40, color: '#ef4444' }}>Accountant not found</div>
 
-  const iStyle: React.CSSProperties = { padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', fontSize: '1rem', width: '100%' }
-  const rowStyle: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '0.25rem' }
+  const currency = acct.default_currency
+
+  const chartData = (analytics?.monthly ?? []).map(m => ({
+    ...m,
+    label: m.month.slice(5),
+  }))
+
+  const hasAnyData = chartData.some(m => m.receipts > 0)
 
   return (
-    <div style={{ maxWidth: '640px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
-        <button onClick={onBack} style={{ padding: '0.3rem 0.7rem', background: 'transparent', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer' }}>\u2190 Back</button>
-        <h2>{accountant.username}</h2>
-        <span style={{ marginLeft: 'auto', padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem', background: accountant.is_active ? '#d4edda' : '#f8d7da', color: accountant.is_active ? '#155724' : '#721c24' }}>
-          {accountant.is_active ? 'Active' : 'Inactive'}
-        </span>
-      </div>
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '8px 0 40px' }}>
 
-      {/* Stats row */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-        {[['Customers', accountant.customer_count], ['Receipts', accountant.receipt_count]].map(([label, val]) => (
-          <div key={String(label)} style={{ background: '#fff', borderRadius: '8px', padding: '1rem 1.5rem', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', flex: 1 }}>
-            <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#1a73e8' }}>{val}</div>
-            <div style={{ color: '#666', fontSize: '0.85rem' }}>{label}</div>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
+        <button onClick={onBack} style={{
+          background: 'none', border: '1px solid #e5e7eb', borderRadius: 8,
+          padding: '7px 14px', cursor: 'pointer', color: '#374151', fontSize: 14,
+        }}>← Back</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+          {acct.logo_url
+            ? <img src={acct.logo_url} alt="logo" style={{ width: 42, height: 42, borderRadius: 8, objectFit: 'cover' }} />
+            : (
+              <div style={{
+                width: 42, height: 42, borderRadius: 8, background: '#4f46e5',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#fff', fontWeight: 700, fontSize: 18,
+              }}>{(acct.display_name || acct.username).charAt(0).toUpperCase()}</div>
+            )
+          }
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: '#111827' }}>{acct.display_name || acct.username}</div>
+            <div style={{ fontSize: 13, color: '#6b7280' }}>{acct.username}</div>
           </div>
-        ))}
+        </div>
+        <span style={{
+          padding: '4px 12px', borderRadius: 20, fontSize: 13, fontWeight: 600,
+          background: acct.is_active ? '#d1fae5' : '#fee2e2',
+          color: acct.is_active ? '#065f46' : '#991b1b',
+        }}>{acct.is_active ? 'Active' : 'Inactive'}</span>
       </div>
 
-      {/* Logo section */}
-      <div style={{ background: '#fff', borderRadius: '8px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginBottom: '1.5rem' }}>
-        <h3 style={{ marginBottom: '1rem' }}>Logo</h3>
-        {accountant.logo_url && (
-          <img src={accountant.logo_url} alt="logo" style={{ maxHeight: '80px', marginBottom: '1rem', display: 'block' }} />
-        )}
-        <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && uploadLogo(e.target.files[0])} />
-        <button onClick={() => fileRef.current?.click()} disabled={logoUploading} style={{ padding: '0.4rem 0.8rem', background: '#f0f2f5', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer' }}>
-          {logoUploading ? 'Uploading\u2026' : 'Upload Logo'}
-        </button>
+      {/* KPI cards */}
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 4 }}>
+        <StatCard label="Customers" value={acct.customer_count} color="#4f46e5" />
+        <StatCard label="Total Receipts" value={acct.receipt_count} color="#10b981" />
+        <StatCard label="Total Income" value={`${currency} ${(analytics?.total_income ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`} color="#10b981" />
+        <StatCard label="Total Expense" value={`${currency} ${(analytics?.total_expense ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`} color="#ef4444" />
+        <StatCard label="Confirmed" value={analytics?.confirmed_count ?? 0} color="#4f46e5" />
+        <StatCard label="Pending" value={analytics?.pending_count ?? 0} color="#f59e0b" />
       </div>
+
+      {/* Charts */}
+      {hasAnyData ? (
+        <>
+          <SectionTitle>Monthly Receipts — Last 12 Months</SectionTitle>
+          <div style={{ background: '#fff', borderRadius: 12, padding: '20px 16px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', marginBottom: 20 }}>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={chartData} barSize={22}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#6b7280' }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#6b7280' }} />
+                <Tooltip
+                  formatter={(val) => [Number(val), 'Receipts']}
+                  labelFormatter={l => `Month: ${l}`}
+                  contentStyle={{ borderRadius: 8, fontSize: 13 }}
+                />
+                <Bar dataKey="receipts" fill="#4f46e5" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <SectionTitle>Monthly Income vs Expense ({currency})</SectionTitle>
+          <div style={{ background: '#fff', borderRadius: 12, padding: '20px 16px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', marginBottom: 20 }}>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={chartData} barSize={18}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#6b7280' }} />
+                <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
+                <Tooltip
+                  formatter={(val, name) => {
+                    const n = Number(val ?? 0)
+                    const s = String(name ?? '')
+                    return [`${currency} ${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, s.charAt(0).toUpperCase() + s.slice(1)]
+                  }}
+                  labelFormatter={l => `Month: ${l}`}
+                  contentStyle={{ borderRadius: 8, fontSize: 13 }}
+                />
+                <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: 13 }} />
+                <Bar dataKey="income" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="expense" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {analytics && analytics.top_vendors.length > 0 && (
+            <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+              <div style={{ flex: 2, minWidth: 300, background: '#fff', borderRadius: 12, padding: '20px 16px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: '#374151', marginBottom: 14 }}>Top Vendors by Spend</div>
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={analytics.top_vendors} layout="vertical" barSize={16}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize: 11, fill: '#6b7280' }} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
+                    <YAxis type="category" dataKey="vendor" tick={{ fontSize: 11, fill: '#374151' }} width={130} />
+                    <Tooltip
+                      formatter={(val) => [`${currency} ${Number(val ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 'Total spend']}
+                      contentStyle={{ borderRadius: 8, fontSize: 13 }}
+                    />
+                    <Bar dataKey="total" radius={[0, 4, 4, 0]}>
+                      {analytics.top_vendors.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div style={{ flex: 1, minWidth: 220, background: '#fff', borderRadius: 12, padding: '20px 16px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: '#374151', marginBottom: 14 }}>Spend Distribution</div>
+                <ResponsiveContainer width="100%" height={240}>
+                  <PieChart>
+                    <Pie
+                      data={analytics.top_vendors}
+                      dataKey="total"
+                      nameKey="vendor"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={90}
+                      label={({ percent }: { percent?: number }) => (percent ?? 0) > 0.05 ? `${((percent ?? 0) * 100).toFixed(0)}%` : ''}
+                      labelLine={false}
+                    >
+                      {analytics.top_vendors.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip formatter={(val) => `${currency} ${Number(val ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`} contentStyle={{ borderRadius: 8, fontSize: 13 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <div style={{ background: '#fff', borderRadius: 12, padding: 32, textAlign: 'center', color: '#9ca3af', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', margin: '20px 0' }}>
+          No receipt data yet
+        </div>
+      )}
 
       {/* Edit form */}
-      <form onSubmit={save} style={{ background: '#fff', borderRadius: '8px', padding: '1.5rem', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <h3>Edit Profile</h3>
-        <div style={rowStyle}><label>Display Name</label><input value={form.display_name} onChange={e => set('display_name', e.target.value)} style={iStyle} /></div>
-        <div style={rowStyle}><label>Company Name</label><input value={form.company_name} onChange={e => set('company_name', e.target.value)} style={iStyle} /></div>
-        <div style={rowStyle}><label>Email</label><input type="email" value={form.email} onChange={e => set('email', e.target.value)} style={iStyle} /></div>
-        <div style={rowStyle}><label>Google Drive Root Folder ID</label><input value={form.google_drive_root_folder_id} onChange={e => set('google_drive_root_folder_id', e.target.value)} style={iStyle} /></div>
-        <div style={rowStyle}><label>Twilio From Number</label><input value={form.twilio_from_number} onChange={e => set('twilio_from_number', e.target.value)} placeholder="+14155238886" style={iStyle} /></div>
-        <div style={rowStyle}><label>Gemini API Key (leave blank to keep current)</label><input value={form.gemini_api_key} onChange={e => set('gemini_api_key', e.target.value)} placeholder="sk-\u2026" style={iStyle} /></div>
-        <div style={rowStyle}>
-          <label>Default Currency</label>
-          <select value={form.default_currency} onChange={e => set('default_currency', e.target.value)} style={iStyle}>
-            <option value="USD">USD</option>
-            <option value="ILS">ILS</option>
-          </select>
+      <SectionTitle>Profile Settings</SectionTitle>
+      <div style={{ background: '#fff', borderRadius: 12, padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }}>
+          {([
+            { key: 'username', label: 'Username (login)' },
+            { key: 'display_name', label: 'Display Name' },
+            { key: 'company_name', label: 'Company Name' },
+            { key: 'email', label: 'Email' },
+            { key: 'twilio_from_number', label: 'Twilio Number' },
+            { key: 'google_drive_root_folder_id', label: 'Drive Root Folder ID' },
+            { key: 'gemini_api_key', label: 'Gemini API Key Override', placeholder: 'Leave blank to keep current' },
+            { key: 'new_password', label: 'New Password', type: 'password', placeholder: 'Leave blank to keep current' },
+          ] as { key: string; label: string; type?: string; placeholder?: string }[]).map(({ key, label, type, placeholder }) => (
+            <div key={key}>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>{label}</label>
+              <input
+                type={type ?? 'text'}
+                value={String(form[key] ?? '')}
+                placeholder={placeholder}
+                onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                style={{
+                  width: '100%', padding: '9px 12px', border: '1px solid #e5e7eb',
+                  borderRadius: 8, fontSize: 14, outline: 'none', boxSizing: 'border-box',
+                }}
+              />
+            </div>
+          ))}
+
+          <div>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Default Currency</label>
+            <select
+              value={String(form.default_currency)}
+              onChange={e => setForm(f => ({ ...f, default_currency: e.target.value }))}
+              style={{ width: '100%', padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14 }}
+            >
+              <option value="USD">USD</option>
+              <option value="ILS">ILS</option>
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 24 }}>
+            <input
+              type="checkbox"
+              id="is_active"
+              checked={Boolean(form.is_active)}
+              onChange={e => setForm(f => ({ ...f, is_active: e.target.checked }))}
+              style={{ width: 16, height: 16, cursor: 'pointer' }}
+            />
+            <label htmlFor="is_active" style={{ fontSize: 14, color: '#374151', cursor: 'pointer' }}>Active</label>
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <input type="checkbox" id="active" checked={form.is_active} onChange={e => set('is_active', e.target.checked)} />
-          <label htmlFor="active">Active</label>
+
+        <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 16 }}>
+          {acct.logo_url
+            ? <img src={acct.logo_url} alt="logo" style={{ height: 48, borderRadius: 8, border: '1px solid #e5e7eb' }} />
+            : <div style={{ fontSize: 13, color: '#9ca3af' }}>No logo</div>
+          }
+          <button onClick={() => fileRef.current?.click()} style={{
+            padding: '8px 16px', border: '1px solid #e5e7eb', borderRadius: 8,
+            background: '#f9fafb', cursor: 'pointer', fontSize: 13, color: '#374151',
+          }}>Upload Logo</button>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleLogo} />
         </div>
-        <div style={rowStyle}><label>New Password (leave blank to keep current)</label><input type="password" value={form.new_password} onChange={e => set('new_password', e.target.value)} style={iStyle} /></div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <button type="submit" disabled={saving} style={{ padding: '0.6rem 1.5rem', background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}>
-            {saving ? 'Saving\u2026' : 'Save'}
-          </button>
-          {saveMsg && <span style={{ color: saveMsg === 'Saved!' ? 'green' : 'red' }}>{saveMsg}</span>}
+
+        <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 14 }}>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{
+              padding: '10px 28px', background: saving ? '#a5b4fc' : '#4f46e5',
+              color: '#fff', border: 'none', borderRadius: 8, fontSize: 14,
+              fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer',
+            }}
+          >{saving ? 'Saving…' : 'Save Changes'}</button>
+          {saveMsg && (
+            <span style={{ fontSize: 13, color: saveMsg.startsWith('Error') ? '#ef4444' : '#10b981', fontWeight: 500 }}>
+              {saveMsg}
+            </span>
+          )}
         </div>
-      </form>
+      </div>
     </div>
   )
 }

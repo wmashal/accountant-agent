@@ -42,6 +42,7 @@ export interface CreateAccountantData {
 }
 
 export interface UpdateAccountantData {
+  username?: string
   display_name?: string
   company_name?: string
   email?: string
@@ -51,6 +52,28 @@ export interface UpdateAccountantData {
   default_currency?: string
   is_active?: boolean
   new_password?: string
+}
+
+export interface MonthlyStats {
+  month: string
+  receipts: number
+  income: number
+  expense: number
+}
+
+export interface VendorStats {
+  vendor: string
+  total: number
+  count: number
+}
+
+export interface AccountantAnalytics {
+  monthly: MonthlyStats[]
+  top_vendors: VendorStats[]
+  total_income: number
+  total_expense: number
+  confirmed_count: number
+  pending_count: number
 }
 
 export function getToken(): string | null {
@@ -129,4 +152,7 @@ export const adminApi = {
       body: fd,
     }).then(r => handleResponse<{ logo_url: string }>(r))
   },
+
+  getAnalytics: (id: number): Promise<AccountantAnalytics> =>
+    fetch(`${BASE}/accountants/${id}/analytics`, { headers: authHeaders() }).then(r => handleResponse<AccountantAnalytics>(r)),
 }
