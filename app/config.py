@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     # Drive poller interval (seconds) — 30s for dev, increase for prod
     drive_poll_interval_seconds: int = 30
 
+    # JWT auth
+    jwt_secret: str = "change-me-in-production"
+
+    # Admin superuser (env vars, no DB row needed)
+    admin_username: str = "admin"
+    admin_password: str = "change-me-in-production"
+
     class Config:
         env_file = ".env"
 

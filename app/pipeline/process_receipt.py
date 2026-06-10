@@ -31,20 +31,18 @@ BATCH_SETTLE_SECONDS = 15
 AUTO_CONFIRM_SECONDS = 5 * 60
 
 
-async def _maybe_send_confirm(from_number: str):
+async def _maybe_send_confirm(from_number: str, twilio_from_number: str, accountant_id: int):
     """Called after each receipt finishes. Waits for the batch to settle, then sends confirm prompt."""
     await asyncio.sleep(BATCH_SETTLE_SECONDS)
 
     redis = await get_redis()
-    # Check if any jobs are still running
-    remaining = await redis.get(f"processing:{from_number}")
+    remaining = await redis.get(f"processing:{accountant_id}:{from_number}")
     remaining = int(remaining) if remaining else 0
     if remaining > 0:
         logger.info(f"Batch still processing ({remaining} remaining) for {from_number}, skipping confirm")
         return
 
-    # All done — send confirm prompt if there are pending SIDs
-    pending_raw = await redis.get(f"pending:{from_number}")
+    pending_raw = await redis.get(f"pending:{accountant_id}:{from_number}")
     if not pending_raw:
         return
 
@@ -53,20 +51,18 @@ async def _maybe_send_confirm(from_number: str):
         sids = [sids]
 
     logger.info(f"Batch complete for {from_number}, sending confirm prompt for {len(sids)} receipt(s)")
-    send_confirm_prompt(from_number, len(sids))
+    send_confirm_prompt(from_number, len(sids), twilio_from_number)
 
-    # Schedule auto-confirm after 5 minutes if user doesn't reply
-    asyncio.create_task(_auto_confirm(from_number))
+    asyncio.create_task(_auto_confirm(from_number, twilio_from_number, accountant_id))
 
 
-async def _auto_confirm(from_number: str):
+async def _auto_confirm(from_number: str, twilio_from_number: str, accountant_id: int):
     """Auto-confirm all pending receipts after AUTO_CONFIRM_SECONDS if user hasn't replied."""
     await asyncio.sleep(AUTO_CONFIRM_SECONDS)
 
     redis = await get_redis()
-    pending_raw = await redis.get(f"pending:{from_number}")
+    pending_raw = await redis.get(f"pending:{accountant_id}:{from_number}")
     if not pending_raw:
-        # Already confirmed/rejected by user
         return
 
     sids = json.loads(pending_raw)
@@ -78,10 +74,10 @@ async def _auto_confirm(from_number: str):
         for sid in sids:
             await update_receipt_status(session, sid, "confirmed")
 
-    await redis.delete(f"pending:{from_number}")
+    await redis.delete(f"pending:{accountant_id}:{from_number}")
 
     from app.services.twilio_client import _send
-    _send(from_number, f"✅ {len(sids)} receipt(s) auto-confirmed after 5 minutes.")
+    _send(from_number, f"✅ {len(sids)} receipt(s) auto-confirmed after 5 minutes.", twilio_from_number)
 
 
 async def process_single_receipt(
@@ -89,39 +85,40 @@ async def process_single_receipt(
     from_number: str,
     file_bytes: bytes,
     content_type: str,
+    accountant_id: int,
+    twilio_from_number: str,
 ):
     """Process one receipt file (image or single-page PDF equivalent)."""
     logger.info(f"Processing receipt: {message_sid} type={content_type}")
 
     async with SessionLocal() as session:
         try:
-            # Extract — PDFs go directly to Gemini Vision (no LlamaParse)
             ocr_text = None
             raw_result, model = await extract(file_bytes, content_type, ocr_text=None)
             logger.info(f"Extraction complete: model={model} vendor={raw_result.get('vendor')} cost={raw_result.get('cost')}")
 
-            # Look up customer's default currency and identity
             from app.models.receipt import Customer
             from sqlalchemy import select as sa_select
-            cust = await session.execute(sa_select(Customer).where(Customer.phone_number == from_number))
+            cust = await session.execute(
+                sa_select(Customer).where(
+                    Customer.phone_number == from_number,
+                    Customer.accountant_id == accountant_id,
+                )
+            )
             customer = cust.scalar_one_or_none()
             default_currency = customer.default_currency if customer else "USD"
             customer_identity = {customer.company_id, customer.company_name, customer.display_name} if customer else set()
 
-            # Normalize
             data = normalize(raw_result, extraction_model=model, raw_ocr=ocr_text, default_currency=default_currency, customer_identity=customer_identity)
             logger.info(f"Normalized: {data.vendor} {data.cost} {data.currency}")
 
-            # Save file
             file_url = await upload_receipt(file_bytes, from_number, message_sid, content_type)
             logger.info(f"File URL: {file_url}")
 
-            # Upsert to Postgres
-            await upsert_receipt(session, message_sid, from_number, data, file_url, "pending_confirmation")
+            await upsert_receipt(session, message_sid, from_number, data, file_url, "pending_confirmation", accountant_id)
 
-            # WhatsApp summary (no confirm prompt — sent separately after all receipts done)
             logger.info(f"Sending WhatsApp summary to {from_number}")
-            send_summary(from_number, data, file_url)
+            send_summary(from_number, data, file_url, twilio_from_number)
 
             logger.info(f"Receipt processed successfully: {message_sid}")
 
@@ -129,17 +126,15 @@ async def process_single_receipt(
             logger.error(f"Failed to process receipt {message_sid}: {e}", exc_info=True)
             try:
                 await update_receipt_status(session, message_sid, "error")
-                send_error(from_number)
+                send_error(from_number, twilio_from_number)
             except Exception as inner:
                 logger.error(f"Failed to send error notification: {inner}")
 
-    # Decrement batch counter
     redis = await get_redis()
-    remaining = await redis.decr(f"processing:{from_number}")
+    remaining = await redis.decr(f"processing:{accountant_id}:{from_number}")
     logger.info(f"Batch counter for {from_number}: {remaining} remaining")
 
-    # Schedule a settle-and-confirm check (runs after BATCH_SETTLE_SECONDS)
-    asyncio.create_task(_maybe_send_confirm(from_number))
+    asyncio.create_task(_maybe_send_confirm(from_number, twilio_from_number, accountant_id))
 
 
 def _group_consecutive_pages(
@@ -158,7 +153,6 @@ def _group_consecutive_pages(
     groups: list[tuple[str | None, list[int]]] = []
     for idx, inv_num in enumerate(page_invoice_numbers):
         if inv_num and groups and groups[-1][0] == inv_num:
-            # Same invoice number as previous page — append to current group
             groups[-1][1].append(idx)
         else:
             groups.append((inv_num, [idx]))
@@ -179,14 +173,10 @@ async def process_receipt(
     from_number: str,
     media_url: str,
     content_type: str,
+    accountant_id: int,
+    twilio_from_number: str,
 ):
-    """Download media and dispatch to process_single_receipt, splitting multi-page PDFs.
-
-    Multi-page handling:
-    - Consecutive pages sharing the same invoice number → merged into one PDF and
-      processed as a single invoice (so the AI sees both detail and totals pages).
-    - Pages with different or unknown invoice numbers → processed independently.
-    """
+    """Download media and dispatch to process_single_receipt, splitting multi-page PDFs."""
     file_bytes = await fetch_media(media_url)
 
     if "pdf" in content_type:
@@ -199,7 +189,6 @@ async def process_receipt(
             if num_pages > 1:
                 logger.info(f"Multi-page PDF detected: {message_sid} ({num_pages} pages)")
 
-                # Build per-page bytes for invoice-number extraction
                 page_bytes_list: list[bytes] = []
                 for page_num in range(num_pages):
                     writer = PdfWriter()
@@ -208,7 +197,6 @@ async def process_receipt(
                     writer.write(buf)
                     page_bytes_list.append(buf.getvalue())
 
-                # Extract invoice numbers (best-effort, no error on failure)
                 page_invoice_numbers: list[str | None] = []
                 for pb in page_bytes_list:
                     try:
@@ -220,30 +208,26 @@ async def process_receipt(
 
                 logger.info(f"Page invoice numbers: {page_invoice_numbers}")
 
-                # Group consecutive pages sharing the same invoice number
                 groups = _group_consecutive_pages(page_invoice_numbers, reader)
                 logger.info(f"Invoice groups: {[(inv, len(b)) for inv, b in groups]}")
 
                 if len(groups) == 1:
-                    # Single invoice spanning all pages — process the merged PDF
                     inv_label = groups[0][0] or "unknown"
                     logger.info(f"All {num_pages} pages form a single invoice '{inv_label}' → processing merged PDF")
-                    await process_single_receipt(message_sid, from_number, groups[0][1], content_type)
+                    await process_single_receipt(message_sid, from_number, groups[0][1], content_type, accountant_id, twilio_from_number)
                     return
 
-                # Multiple invoice groups — increment batch counter by (groups - 1)
-                # because process_receipt already incremented by 1 upstream
                 redis = await get_redis()
-                await redis.incrby(f"processing:{from_number}", len(groups) - 1)
+                await redis.incrby(f"processing:{accountant_id}:{from_number}", len(groups) - 1)
                 for g_idx, (inv_num, group_bytes) in enumerate(groups):
                     group_sid = f"{message_sid}_g{g_idx + 1}"
                     logger.info(f"Processing group {g_idx + 1}/{len(groups)} invoice='{inv_num}' sid={group_sid}")
-                    await process_single_receipt(group_sid, from_number, group_bytes, content_type)
+                    await process_single_receipt(group_sid, from_number, group_bytes, content_type, accountant_id, twilio_from_number)
                 return
         except Exception as e:
             logger.warning(f"PDF page split failed ({e}), processing as single receipt")
 
-    await process_single_receipt(message_sid, from_number, file_bytes, content_type)
+    await process_single_receipt(message_sid, from_number, file_bytes, content_type, accountant_id, twilio_from_number)
 
 
 async def process_single_receipt_from_drive(
@@ -251,13 +235,10 @@ async def process_single_receipt_from_drive(
     content_type: str,
     customer,
     drive_file_id: str,
+    accountant_id: int,
 ):
     """Process a receipt file sourced from Google Drive.
     No Twilio messages, no Redis counter — auto-confirmed immediately.
-
-    Multi-page handling: consecutive pages sharing the same invoice number are merged
-    into one PDF and processed as a single invoice.  Different invoice numbers or
-    unknown → processed independently.
     """
     message_sid = f"drive_{drive_file_id[:40]}"
     logger.info(f"Processing Drive receipt: file_id={drive_file_id} customer={customer.id} type={content_type}")
@@ -270,7 +251,6 @@ async def process_single_receipt_from_drive(
             if num_pages > 1:
                 logger.info(f"Multi-page Drive PDF: {num_pages} pages (file_id={drive_file_id})")
 
-                # Build per-page bytes for invoice-number extraction
                 page_bytes_list: list[bytes] = []
                 for page_num in range(num_pages):
                     writer = PdfWriter()
@@ -279,7 +259,6 @@ async def process_single_receipt_from_drive(
                     writer.write(buf)
                     page_bytes_list.append(buf.getvalue())
 
-                # Extract invoice numbers (best-effort)
                 page_invoice_numbers: list[str | None] = []
                 for pb in page_bytes_list:
                     try:
@@ -291,26 +270,24 @@ async def process_single_receipt_from_drive(
 
                 logger.info(f"Drive page invoice numbers: {page_invoice_numbers}")
 
-                # Group consecutive pages sharing the same invoice number
                 groups = _group_consecutive_pages(page_invoice_numbers, reader)
                 logger.info(f"Drive invoice groups: {[(inv, len(b)) for inv, b in groups]}")
 
                 if len(groups) == 1:
                     inv_label = groups[0][0] or "unknown"
                     logger.info(f"Drive: all {num_pages} pages form single invoice '{inv_label}' → merged PDF")
-                    return await _process_drive_single_page(groups[0][1], content_type, customer, drive_file_id, message_sid)
+                    return await _process_drive_single_page(groups[0][1], content_type, customer, drive_file_id, message_sid, accountant_id)
 
-                # Multiple invoice groups → process each independently
                 last_data = None
                 for g_idx, (inv_num, group_bytes) in enumerate(groups):
                     group_sid = f"drive_{drive_file_id[:36]}_g{g_idx + 1}"
                     logger.info(f"Drive group {g_idx + 1}/{len(groups)} invoice='{inv_num}' sid={group_sid}")
-                    last_data = await _process_drive_single_page(group_bytes, content_type, customer, drive_file_id, group_sid)
+                    last_data = await _process_drive_single_page(group_bytes, content_type, customer, drive_file_id, group_sid, accountant_id)
                 return last_data
         except Exception as e:
             logger.warning(f"Drive PDF split failed ({e}), processing as single page")
 
-    return await _process_drive_single_page(file_bytes, content_type, customer, drive_file_id, message_sid)
+    return await _process_drive_single_page(file_bytes, content_type, customer, drive_file_id, message_sid, accountant_id)
 
 
 async def _process_drive_single_page(
@@ -319,6 +296,7 @@ async def _process_drive_single_page(
     customer,
     drive_file_id: str,
     message_sid: str,
+    accountant_id: int,
 ):
     """Internal: extract + save one Drive receipt page. Returns ReceiptData (or None on error)."""
     async with SessionLocal() as session:
@@ -330,11 +308,9 @@ async def _process_drive_single_page(
             raw_text = " ".join(str(v) for v in raw_result.values() if v)
             data = normalize(raw_result, extraction_model=model, raw_ocr=raw_text, default_currency=customer.default_currency, customer_identity=customer_identity)
 
-            # Store file locally (same as WhatsApp path)
             phone_key = f"drive_{customer.id}"
             file_url = await upload_receipt(file_bytes, phone_key, message_sid, content_type)
 
-            # Upsert — auto-confirmed, no confirmation step needed
             await upsert_receipt_from_drive(
                 session=session,
                 message_sid=message_sid,
@@ -342,6 +318,7 @@ async def _process_drive_single_page(
                 data=data,
                 file_url=file_url,
                 drive_file_id=drive_file_id,
+                accountant_id=accountant_id,
             )
             logger.info(f"Drive receipt saved: {message_sid}")
             return data

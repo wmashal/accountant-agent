@@ -12,30 +12,34 @@ logger = logging.getLogger(__name__)
 async def find_customer_by_identity(
     session: AsyncSession,
     phone_number: str,
+    accountant_id: int,
     company_id: str | None = None,
 ) -> Customer | None:
-    """
-    Look up a customer by phone number OR company_id (if provided and non-empty).
-    Returns the first match, or None.
-    """
-    conditions = [Customer.phone_number == phone_number]
+    """Look up a customer by phone number OR company_id within the same accountant."""
+    conditions = [
+        (Customer.phone_number == phone_number) & (Customer.accountant_id == accountant_id)
+    ]
     if company_id:
         conditions.append(
-            (Customer.company_id == company_id) & Customer.company_id.isnot(None)
+            (Customer.company_id == company_id)
+            & Customer.company_id.isnot(None)
+            & (Customer.accountant_id == accountant_id)
         )
-    result = await session.execute(
-        select(Customer).where(or_(*conditions))
-    )
+    result = await session.execute(select(Customer).where(or_(*conditions)))
     return result.scalars().first()
 
 
-async def get_or_create_customer(session: AsyncSession, phone_number: str) -> Customer:
-    customer = await find_customer_by_identity(session, phone_number)
+async def get_or_create_customer(
+    session: AsyncSession,
+    phone_number: str,
+    accountant_id: int,
+) -> Customer:
+    customer = await find_customer_by_identity(session, phone_number, accountant_id)
     if not customer:
-        customer = Customer(phone_number=phone_number)
+        customer = Customer(phone_number=phone_number, accountant_id=accountant_id)
         session.add(customer)
         await session.flush()
-        logger.info(f"New customer created: {phone_number}")
+        logger.info(f"New customer created: {phone_number} accountant={accountant_id}")
     return customer
 
 
@@ -46,6 +50,7 @@ async def create_customer(
     company_id: str | None,
     phone_number: str | None,
     drive_folder_id: str | None,
+    accountant_id: int,
     default_currency: str = "USD",
 ) -> Customer:
     """Create a customer from the dashboard. Phone is optional for Drive-only customers."""
@@ -58,11 +63,12 @@ async def create_customer(
         drive_folder_id=drive_folder_id,
         source="drive" if not phone_number else "both",
         default_currency=default_currency,
+        accountant_id=accountant_id,
     )
     session.add(customer)
     await session.commit()
     await session.refresh(customer)
-    logger.info(f"Dashboard customer created: id={customer.id} name={display_name}")
+    logger.info(f"Dashboard customer created: id={customer.id} name={display_name} accountant={accountant_id}")
     return customer
 
 
@@ -77,12 +83,18 @@ async def get_processed_drive_file_ids(session: AsyncSession, customer_id: int) 
     return {row[0] for row in result.all()}
 
 
-async def create_receipt_row(session: AsyncSession, message_sid: str, phone_number: str) -> Receipt:
-    customer = await get_or_create_customer(session, phone_number)
+async def create_receipt_row(
+    session: AsyncSession,
+    message_sid: str,
+    phone_number: str,
+    accountant_id: int,
+) -> Receipt:
+    customer = await get_or_create_customer(session, phone_number, accountant_id)
     receipt = Receipt(
         message_sid=message_sid,
         customer_id=customer.id,
         phone_number=phone_number,
+        accountant_id=accountant_id,
         status="processing",
     )
     session.add(receipt)
@@ -127,6 +139,7 @@ async def upsert_receipt(
     data: ReceiptData,
     file_url: str | None,
     status: str,
+    accountant_id: int,
 ):
     result = await session.execute(
         select(Receipt).where(Receipt.message_sid == message_sid)
@@ -134,11 +147,12 @@ async def upsert_receipt(
     receipt = result.scalar_one_or_none()
 
     if receipt is None:
-        customer = await get_or_create_customer(session, phone_number)
+        customer = await get_or_create_customer(session, phone_number, accountant_id)
         receipt = Receipt(
             message_sid=message_sid,
             customer_id=customer.id,
             phone_number=phone_number,
+            accountant_id=accountant_id,
         )
         session.add(receipt)
 
@@ -167,6 +181,7 @@ async def upsert_receipt_from_drive(
     data: ReceiptData,
     file_url: str | None,
     drive_file_id: str,
+    accountant_id: int,
 ):
     """Upsert a receipt sourced from Google Drive. Auto-confirmed, no phone number needed."""
     result = await session.execute(
@@ -179,6 +194,7 @@ async def upsert_receipt_from_drive(
             message_sid=message_sid,
             customer_id=customer_id,
             phone_number=f"drive_{customer_id}",
+            accountant_id=accountant_id,
         )
         session.add(receipt)
 
@@ -207,14 +223,13 @@ async def update_customer_profile(
     display_name: str | None,
     company_name: str | None,
     company_id: str | None,
+    accountant_id: int,
 ):
-    # Try to find existing customer by phone OR company_id
-    customer = await find_customer_by_identity(session, phone_number, company_id or None)
+    customer = await find_customer_by_identity(session, phone_number, accountant_id, company_id or None)
     if not customer:
-        customer = Customer(phone_number=phone_number)
+        customer = Customer(phone_number=phone_number, accountant_id=accountant_id)
         session.add(customer)
     else:
-        # If matched by company_id but phone differs, update phone and mark as both
         if customer.phone_number != phone_number:
             logger.info(f"Matched existing customer id={customer.id} via company_id={company_id}, linking phone {phone_number}")
             customer.phone_number = phone_number
