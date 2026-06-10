@@ -87,6 +87,7 @@ async def process_single_receipt(
     content_type: str,
     accountant_id: int,
     twilio_from_number: str,
+    prefetched_extraction: tuple | None = None,
 ):
     """Process one receipt file (image or single-page PDF equivalent)."""
     logger.info(f"Processing receipt: {message_sid} type={content_type}")
@@ -94,7 +95,12 @@ async def process_single_receipt(
     async with SessionLocal() as session:
         try:
             ocr_text = None
-            raw_result, model = await extract(file_bytes, content_type, ocr_text=None)
+            if prefetched_extraction is not None:
+                raw_result, model = prefetched_extraction
+                logger.info(f"Using prefetched extraction: model={model}")
+            else:
+                raw_result, model = await extract(file_bytes, content_type, ocr_text=None)
+            logger.info(f"Extraction complete: model={model} vendor={raw_result.get('vendor')} cost={raw_result.get('cost')}")
             logger.info(f"Extraction complete: model={model} vendor={raw_result.get('vendor')} cost={raw_result.get('cost')}")
 
             from app.models.receipt import Customer
@@ -140,16 +146,15 @@ async def process_single_receipt(
 def _group_consecutive_pages(
     page_invoice_numbers: list[str | None],
     reader,
-) -> list[tuple[str | None, bytes]]:
-    """Group consecutive pages that share the same invoice number.
+) -> list[tuple[str | None, list[int], bytes]]:
+    """Group consecutive pages sharing the same invoice number.
 
-    Returns a list of (invoice_number_or_None, merged_pdf_bytes) — one entry per
-    invoice group.  Pages with None invoice numbers or unique numbers are each their
-    own single-page group.  Consecutive pages that share a non-None invoice number
-    are merged into one multi-page PDF so the AI sees the full invoice.
+    Returns a list of (invoice_number_or_None, page_indices, merged_pdf_bytes).
+    Single-page groups have one index; multi-page groups have the merged PDF bytes.
     """
     from pypdf import PdfWriter
 
+    # Build index groups
     groups: list[tuple[str | None, list[int]]] = []
     for idx, inv_num in enumerate(page_invoice_numbers):
         if inv_num and groups and groups[-1][0] == inv_num:
@@ -157,15 +162,24 @@ def _group_consecutive_pages(
         else:
             groups.append((inv_num, [idx]))
 
-    result: list[tuple[str | None, bytes]] = []
+    # Build PDF bytes for each group
+    result: list[tuple[str | None, list[int], bytes]] = []
     for inv_num, page_indices in groups:
         writer = PdfWriter()
         for pi in page_indices:
             writer.add_page(reader.pages[pi])
         buf = io.BytesIO()
         writer.write(buf)
-        result.append((inv_num, buf.getvalue()))
+        result.append((inv_num, page_indices, buf.getvalue()))
     return result
+
+
+async def _extract_page(pb: bytes, content_type: str) -> tuple | None:
+    """Extract a single page, returning (raw_result, model) or None on failure."""
+    try:
+        return await extract(pb, content_type, ocr_text=None)
+    except Exception:
+        return None
 
 
 async def process_receipt(
@@ -197,32 +211,36 @@ async def process_receipt(
                     writer.write(buf)
                     page_bytes_list.append(buf.getvalue())
 
-                page_invoice_numbers: list[str | None] = []
-                for pb in page_bytes_list:
-                    try:
-                        raw, _ = await extract(pb, content_type, ocr_text=None)
-                        inv_num = str(raw.get("receipt_number") or "").strip() or None
-                        page_invoice_numbers.append(inv_num)
-                    except Exception:
-                        page_invoice_numbers.append(None)
+                # Extract all pages concurrently — one API call per page in parallel
+                page_extractions = await asyncio.gather(
+                    *[_extract_page(pb, content_type) for pb in page_bytes_list]
+                )
 
+                page_invoice_numbers = [
+                    (str(r[0].get("receipt_number") or "").strip() or None) if r else None
+                    for r in page_extractions
+                ]
                 logger.info(f"Page invoice numbers: {page_invoice_numbers}")
 
                 groups = _group_consecutive_pages(page_invoice_numbers, reader)
-                logger.info(f"Invoice groups: {[(inv, len(b)) for inv, b in groups]}")
+                logger.info(f"Invoice groups: {[(inv, len(idxs)) for inv, idxs, _ in groups]}")
 
                 if len(groups) == 1:
                     inv_label = groups[0][0] or "unknown"
                     logger.info(f"All {num_pages} pages form a single invoice '{inv_label}' → processing merged PDF")
-                    await process_single_receipt(message_sid, from_number, groups[0][1], content_type, accountant_id, twilio_from_number)
+                    # Single group: re-extract merged only if it was actually multi-page
+                    prefetched = page_extractions[0] if num_pages == 1 else None
+                    await process_single_receipt(message_sid, from_number, groups[0][2], content_type, accountant_id, twilio_from_number, prefetched_extraction=prefetched)
                     return
 
                 redis = await get_redis()
                 await redis.incrby(f"processing:{accountant_id}:{from_number}", len(groups) - 1)
-                for g_idx, (inv_num, group_bytes) in enumerate(groups):
+                for g_idx, (inv_num, page_indices, group_bytes) in enumerate(groups):
                     group_sid = f"{message_sid}_g{g_idx + 1}"
                     logger.info(f"Processing group {g_idx + 1}/{len(groups)} invoice='{inv_num}' sid={group_sid}")
-                    await process_single_receipt(group_sid, from_number, group_bytes, content_type, accountant_id, twilio_from_number)
+                    # Single-page group: reuse the extraction we already have
+                    prefetched = page_extractions[page_indices[0]] if len(page_indices) == 1 else None
+                    await process_single_receipt(group_sid, from_number, group_bytes, content_type, accountant_id, twilio_from_number, prefetched_extraction=prefetched)
                 return
         except Exception as e:
             logger.warning(f"PDF page split failed ({e}), processing as single receipt")
@@ -259,30 +277,32 @@ async def process_single_receipt_from_drive(
                     writer.write(buf)
                     page_bytes_list.append(buf.getvalue())
 
-                page_invoice_numbers: list[str | None] = []
-                for pb in page_bytes_list:
-                    try:
-                        raw, _ = await extract(pb, content_type, ocr_text=None)
-                        inv_num = str(raw.get("receipt_number") or "").strip() or None
-                        page_invoice_numbers.append(inv_num)
-                    except Exception:
-                        page_invoice_numbers.append(None)
+                # Extract all pages concurrently
+                page_extractions = await asyncio.gather(
+                    *[_extract_page(pb, content_type) for pb in page_bytes_list]
+                )
 
+                page_invoice_numbers = [
+                    (str(r[0].get("receipt_number") or "").strip() or None) if r else None
+                    for r in page_extractions
+                ]
                 logger.info(f"Drive page invoice numbers: {page_invoice_numbers}")
 
                 groups = _group_consecutive_pages(page_invoice_numbers, reader)
-                logger.info(f"Drive invoice groups: {[(inv, len(b)) for inv, b in groups]}")
+                logger.info(f"Drive invoice groups: {[(inv, len(idxs)) for inv, idxs, _ in groups]}")
 
                 if len(groups) == 1:
                     inv_label = groups[0][0] or "unknown"
                     logger.info(f"Drive: all {num_pages} pages form single invoice '{inv_label}' → merged PDF")
-                    return await _process_drive_single_page(groups[0][1], content_type, customer, drive_file_id, message_sid, accountant_id)
+                    prefetched = page_extractions[0] if num_pages == 1 else None
+                    return await _process_drive_single_page(groups[0][2], content_type, customer, drive_file_id, message_sid, accountant_id, prefetched_extraction=prefetched)
 
                 last_data = None
-                for g_idx, (inv_num, group_bytes) in enumerate(groups):
+                for g_idx, (inv_num, page_indices, group_bytes) in enumerate(groups):
                     group_sid = f"drive_{drive_file_id[:36]}_g{g_idx + 1}"
                     logger.info(f"Drive group {g_idx + 1}/{len(groups)} invoice='{inv_num}' sid={group_sid}")
-                    last_data = await _process_drive_single_page(group_bytes, content_type, customer, drive_file_id, group_sid, accountant_id)
+                    prefetched = page_extractions[page_indices[0]] if len(page_indices) == 1 else None
+                    last_data = await _process_drive_single_page(group_bytes, content_type, customer, drive_file_id, group_sid, accountant_id, prefetched_extraction=prefetched)
                 return last_data
         except Exception as e:
             logger.warning(f"Drive PDF split failed ({e}), processing as single page")
@@ -297,11 +317,16 @@ async def _process_drive_single_page(
     drive_file_id: str,
     message_sid: str,
     accountant_id: int,
+    prefetched_extraction: tuple | None = None,
 ):
     """Internal: extract + save one Drive receipt page. Returns ReceiptData (or None on error)."""
     async with SessionLocal() as session:
         try:
-            raw_result, model = await extract(file_bytes, content_type, ocr_text=None)
+            if prefetched_extraction is not None:
+                raw_result, model = prefetched_extraction
+                logger.info(f"Drive using prefetched extraction: model={model}")
+            else:
+                raw_result, model = await extract(file_bytes, content_type, ocr_text=None)
             logger.info(f"Drive extraction: model={model} vendor={raw_result.get('vendor')} cost={raw_result.get('cost')}")
 
             customer_identity = {customer.company_id, customer.company_name, customer.display_name}
