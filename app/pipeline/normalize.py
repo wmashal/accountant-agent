@@ -14,10 +14,16 @@ def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, d
     cost = _parse_float(raw.get("cost"))
     receipt_language = raw.get("receipt_language", "unknown")
 
-    # --- Tax / GST ---
+    # --- Tax / VAT ---
+    # Only populate tax if it is explicitly shown on the invoice.
+    # If VAT-inclusive but no explicit tax line, leave tax=None.
+    # tax_rate is stored so the UI can calculate tax on demand.
     tax = _parse_float(raw.get("tax"))
-    if tax is None and raw.get("tax_included"):
-        tax = round(cost / 11, 2)
+    tax_rate = _parse_float(raw.get("tax_rate"))
+    # If tax not shown but tax_rate is known and invoice is tax-inclusive, calculate tax
+    if tax is None and tax_rate is not None and raw.get("tax_included") and cost:
+        # tax_rate is fraction of gross amount: tax = cost * rate / (1 + rate)
+        tax = round(cost * tax_rate / (1 + tax_rate), 2)
 
     # --- Currency ---
     # Always use the customer's default currency — ignore AI-extracted currency
@@ -45,6 +51,7 @@ def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, d
         vendor=vendor,
         cost=cost,
         tax=tax,
+        tax_rate=tax_rate,
         currency=currency,
         date=date,
         abn=abn,

@@ -148,7 +148,15 @@ async def process_receipt(
     media_url: str,
     content_type: str,
 ):
-    """Download media and dispatch to process_single_receipt, splitting multi-page PDFs."""
+    """Download media and dispatch to process_single_receipt, splitting multi-page PDFs.
+
+    Multi-page handling:
+    - If every page has the same invoice number → single invoice spanning multiple pages.
+      We process only the first page and skip the rest (they are duplicates of the same invoice).
+    - If pages have different invoice numbers → separate invoices in one PDF.
+      Each page is processed independently.
+    - If invoice numbers can't be determined, fall back to processing every page independently.
+    """
     file_bytes = await fetch_media(media_url)
 
     if "pdf" in content_type:
@@ -160,17 +168,44 @@ async def process_receipt(
 
             if num_pages > 1:
                 logger.info(f"Multi-page PDF detected: {message_sid} ({num_pages} pages)")
-                # Increase counter by extra pages (we already counted 1 for this job in webhook)
-                redis = await get_redis()
-                await redis.incrby(f"processing:{from_number}", num_pages - 1)
+
+                # Quick-extract invoice numbers from all pages to decide grouping
+                page_invoice_numbers: list[str | None] = []
+                page_bytes_list: list[bytes] = []
                 for page_num in range(num_pages):
                     writer = PdfWriter()
                     writer.add_page(reader.pages[page_num])
                     buf = io.BytesIO()
                     writer.write(buf)
-                    page_bytes = buf.getvalue()
+                    page_bytes_list.append(buf.getvalue())
+
+                # Extract invoice numbers (best-effort, no error on failure)
+                for page_num, pb in enumerate(page_bytes_list):
+                    try:
+                        raw, _ = await extract(pb, content_type, ocr_text=None)
+                        inv_num = str(raw.get("receipt_number") or "").strip() or None
+                        page_invoice_numbers.append(inv_num)
+                    except Exception:
+                        page_invoice_numbers.append(None)
+
+                # Check if all non-None invoice numbers are identical
+                non_null = [n for n in page_invoice_numbers if n]
+                all_same = len(non_null) == num_pages and len(set(non_null)) == 1
+
+                if all_same:
+                    logger.info(
+                        f"All {num_pages} pages share invoice number '{non_null[0]}' → treating as single invoice"
+                    )
+                    # Process only the first page; it represents the whole invoice
+                    await process_single_receipt(message_sid, from_number, page_bytes_list[0], content_type)
+                    return
+
+                # Different invoice numbers or unknown → process each page separately
+                redis = await get_redis()
+                await redis.incrby(f"processing:{from_number}", num_pages - 1)
+                for page_num, pb in enumerate(page_bytes_list):
                     page_sid = f"{message_sid}_p{page_num + 1}"
-                    await process_single_receipt(page_sid, from_number, page_bytes, content_type)
+                    await process_single_receipt(page_sid, from_number, pb, content_type)
                 return
         except Exception as e:
             logger.warning(f"PDF page split failed ({e}), processing as single receipt")
@@ -186,8 +221,11 @@ async def process_single_receipt_from_drive(
 ):
     """Process a receipt file sourced from Google Drive.
     No Twilio messages, no Redis counter — auto-confirmed immediately.
+
+    Multi-page handling mirrors the WhatsApp path:
+    - All pages share the same invoice number → single invoice (process first page only).
+    - Different invoice numbers → separate invoices per page.
     """
-    import uuid
     message_sid = f"drive_{drive_file_id[:40]}"
     logger.info(f"Processing Drive receipt: file_id={drive_file_id} customer={customer.id} type={content_type}")
 
@@ -198,15 +236,40 @@ async def process_single_receipt_from_drive(
             num_pages = len(reader.pages)
             if num_pages > 1:
                 logger.info(f"Multi-page Drive PDF: {num_pages} pages (file_id={drive_file_id})")
-                last_data = None
+
+                # Build per-page bytes
+                page_bytes_list: list[bytes] = []
                 for page_num in range(num_pages):
                     writer = PdfWriter()
                     writer.add_page(reader.pages[page_num])
                     buf = io.BytesIO()
                     writer.write(buf)
-                    page_bytes = buf.getvalue()
+                    page_bytes_list.append(buf.getvalue())
+
+                # Extract invoice numbers to detect single vs multi-invoice
+                page_invoice_numbers: list[str | None] = []
+                for pb in page_bytes_list:
+                    try:
+                        raw, _ = await extract(pb, content_type, ocr_text=None)
+                        inv_num = str(raw.get("receipt_number") or "").strip() or None
+                        page_invoice_numbers.append(inv_num)
+                    except Exception:
+                        page_invoice_numbers.append(None)
+
+                non_null = [n for n in page_invoice_numbers if n]
+                all_same = len(non_null) == num_pages and len(set(non_null)) == 1
+
+                if all_same:
+                    logger.info(
+                        f"Drive PDF: all {num_pages} pages share invoice '{non_null[0]}' → single invoice"
+                    )
+                    return await _process_drive_single_page(page_bytes_list[0], content_type, customer, drive_file_id, message_sid)
+
+                # Different invoice numbers → process each page independently
+                last_data = None
+                for page_num, pb in enumerate(page_bytes_list):
                     page_sid = f"drive_{drive_file_id[:36]}_p{page_num + 1}"
-                    last_data = await _process_drive_single_page(page_bytes, content_type, customer, drive_file_id, page_sid)
+                    last_data = await _process_drive_single_page(pb, content_type, customer, drive_file_id, page_sid)
                 return last_data
         except Exception as e:
             logger.warning(f"Drive PDF split failed ({e}), processing as single page")

@@ -22,8 +22,10 @@ export interface Receipt {
   vendor: string | null
   cost: number | null
   tax: number | null
+  tax_rate: number | null
   currency: string
   date: string | null
+  upload_date: string | null
   abn: string | null
   receipt_number: string | null
   receipt_language: string | null

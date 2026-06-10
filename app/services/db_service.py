@@ -1,5 +1,6 @@
 import logging
 import uuid
+from datetime import datetime, timezone
 from sqlalchemy import select, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -152,6 +153,9 @@ async def upsert_receipt(
     receipt.receipt_language = data.receipt_language
     receipt.extraction_model = data.extraction_model
     receipt.transaction_type = data.transaction_type
+    receipt.tax_rate = data.tax_rate
+    if receipt.upload_date is None:
+        receipt.upload_date = datetime.now(timezone.utc)
     receipt.file_url = file_url
     receipt.status = status
     await session.commit()
@@ -190,6 +194,9 @@ async def upsert_receipt_from_drive(
     receipt.receipt_language = data.receipt_language
     receipt.extraction_model = data.extraction_model
     receipt.transaction_type = data.transaction_type
+    receipt.tax_rate = data.tax_rate
+    if receipt.upload_date is None:
+        receipt.upload_date = datetime.now(timezone.utc)
     receipt.file_url = file_url
     receipt.drive_file_id = drive_file_id
     receipt.status = "confirmed"

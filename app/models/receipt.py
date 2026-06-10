@@ -44,6 +44,8 @@ class Receipt(Base):
     receipt_number: Mapped[Optional[str]] = mapped_column(sa.String(100), nullable=True)
     receipt_language: Mapped[str] = mapped_column(sa.String(20), default="unknown")
     extraction_model: Mapped[str] = mapped_column(sa.String(50), default="")
+    tax_rate: Mapped[Optional[float]] = mapped_column(sa.Float, nullable=True)  # e.g. 0.17 or 0.18
+    upload_date: Mapped[Optional[datetime]] = mapped_column(sa.DateTime(timezone=True), nullable=True)
 
     transaction_type: Mapped[str] = mapped_column(sa.String(20), default="expense")
     status: Mapped[str] = mapped_column(sa.String(30), default="processing")
@@ -77,3 +79,4 @@ class ReceiptData:
     extraction_model: str
     transaction_type: str = "expense"
     raw_ocr: Optional[str] = None
+    tax_rate: Optional[float] = None  # e.g. 0.17 or 0.18
