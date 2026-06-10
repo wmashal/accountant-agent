@@ -20,7 +20,6 @@ Return ONLY valid JSON matching this exact schema — no markdown fences, no exp
   "tax_rate": null,
   "currency": "USD",
   "date": "string",
-  "abn": "string or null",
   "receipt_language": "en"
 }
 
@@ -34,7 +33,6 @@ Rules:
 - tax_rate: the VAT/tax rate percentage as a decimal if shown or can be inferred (e.g. 0.17 for 17%, 0.18 for 18%); null if unknown
 - currency: ISO 4217 code; default to USD if not shown
 - date: as printed on the invoice in any format
-- abn: as printed including spaces; null if not present
 - receipt_language: BCP 47 code (e.g. en, ar, zh, fr, ja, he)"""
 
 

@@ -1,4 +1,3 @@
-import re
 import logging
 from typing import Optional
 from dateutil import parser as dateparser
@@ -41,12 +40,6 @@ def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, d
     # --- Date ---
     date = _parse_date(raw.get("date", ""))
 
-    # --- ABN ---
-    abn_raw = str(raw.get("abn") or "").strip()
-    abn_digits = re.sub(r"\D", "", abn_raw)
-    abn_valid = len(abn_digits) == 11 and _validate_abn(abn_digits)
-    abn = abn_digits if abn_valid else None
-
     return ReceiptData(
         vendor=vendor,
         cost=cost,
@@ -54,8 +47,6 @@ def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, d
         tax_rate=tax_rate,
         currency=currency,
         date=date,
-        abn=abn,
-        abn_raw=abn_raw if not abn_valid and abn_raw else None,
         receipt_number=receipt_number,
         receipt_language=receipt_language,
         extraction_model=extraction_model,
@@ -82,10 +73,3 @@ def _parse_date(value: str) -> str:
         logger.warning(f"Could not parse date: {value!r}")
         return str(value)
 
-
-def _validate_abn(abn: str) -> bool:
-    """ATO ABN checksum validation."""
-    weights = [10, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
-    digits = [int(d) for d in abn]
-    digits[0] -= 1
-    return sum(d * w for d, w in zip(digits, weights)) % 89 == 0

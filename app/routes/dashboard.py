@@ -41,7 +41,6 @@ class ReceiptOut(BaseModel):
     currency: str
     date: Optional[str]
     upload_date: Optional[str]
-    abn: Optional[str]
     receipt_number: Optional[str]
     receipt_language: Optional[str]
     extraction_model: Optional[str]
@@ -59,7 +58,6 @@ class UpdateReceiptRequest(BaseModel):
     tax_rate: Optional[float] = None
     currency: Optional[str] = None
     date: Optional[str] = None
-    abn: Optional[str] = None
     receipt_number: Optional[str] = None
     transaction_type: Optional[str] = None
     status: Optional[str] = None
@@ -177,7 +175,6 @@ async def list_customer_receipts(customer_id: int, session: AsyncSession = Depen
             currency=r.currency,
             date=r.date,
             upload_date=r.upload_date.isoformat() if r.upload_date else None,
-            abn=r.abn,
             receipt_number=r.receipt_number,
             receipt_language=r.receipt_language,
             extraction_model=r.extraction_model,
@@ -214,8 +211,6 @@ async def update_receipt(
         receipt.currency = body.currency.strip() or receipt.currency
     if body.date is not None:
         receipt.date = body.date.strip() or receipt.date
-    if body.abn is not None:
-        receipt.abn = body.abn.strip() or None
     if body.receipt_number is not None:
         receipt.receipt_number = body.receipt_number.strip() or None
     if body.transaction_type is not None:
@@ -236,7 +231,6 @@ async def update_receipt(
         currency=receipt.currency,
         date=receipt.date,
         upload_date=receipt.upload_date.isoformat() if receipt.upload_date else None,
-        abn=receipt.abn,
         receipt_number=receipt.receipt_number,
         receipt_language=receipt.receipt_language,
         extraction_model=receipt.extraction_model,

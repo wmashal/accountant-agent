@@ -117,7 +117,6 @@ export default function App() {
       tax_rate: r.tax_rate ?? undefined,
       currency: r.currency,
       date: r.date || "",
-      abn: r.abn || "",
       receipt_number: r.receipt_number || "",
       transaction_type: r.transaction_type,
       status: r.status,
@@ -603,7 +602,6 @@ export default function App() {
                               <th>Amount</th>
                               <th>Tax Rate</th>
                               <th>Tax</th>
-                              <th>ABN</th>
                               <th>Type</th>
                               <th>Status</th>
                               <th>File</th>
@@ -630,7 +628,6 @@ export default function App() {
                                     </select>
                                   </td>
                                   <td><input className="edit-input edit-input-sm" type="number" value={editForm.tax ?? ""} onChange={e => setEditForm(p => ({ ...p, tax: parseFloat(e.target.value) || undefined }))} placeholder="Tax" /></td>
-                                  <td><input className="edit-input" value={editForm.abn || ""} onChange={e => setEditForm(p => ({ ...p, abn: e.target.value }))} placeholder="ABN" /></td>
                                   <td>
                                     <select className="edit-select" value={editForm.transaction_type} onChange={e => setEditForm(p => ({ ...p, transaction_type: e.target.value as "income" | "expense" }))}>
                                       <option value="income">Income</option>
@@ -666,7 +663,6 @@ export default function App() {
                                   <td className="amount">{r.cost != null ? `${r.currency} ${r.cost.toFixed(2)}` : "—"}</td>
                                   <td>{formatTaxRate(r.tax_rate)}</td>
                                   <td>{r.tax != null ? `${r.currency} ${r.tax.toFixed(2)}` : "—"}</td>
-                                  <td>{r.abn || "—"}</td>
                                   <td>
                                     <button className={`type-btn ${r.transaction_type}`} onClick={() => toggleType(r)} title="Click to toggle">
                                       {r.transaction_type === "income" ? "↑ Income" : "↓ Expense"}
@@ -700,7 +696,7 @@ export default function App() {
                               </td>
                               <td>—</td>
                               <td>{monthTax > 0 ? `${ccy} ${monthTax.toFixed(2)}` : "—"}</td>
-                              <td colSpan={5}></td>
+                              <td colSpan={4}></td>
                             </tr>
                           </tbody>
                         </table>

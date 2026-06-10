@@ -112,7 +112,6 @@ async def update_receipt(
     receipt.tax = data.tax
     receipt.currency = data.currency
     receipt.date = data.date
-    receipt.abn = data.abn
     receipt.receipt_language = data.receipt_language
     receipt.extraction_model = data.extraction_model
     receipt.file_url = file_url
@@ -148,7 +147,6 @@ async def upsert_receipt(
     receipt.tax = data.tax
     receipt.currency = data.currency
     receipt.date = data.date
-    receipt.abn = data.abn
     receipt.receipt_number = data.receipt_number
     receipt.receipt_language = data.receipt_language
     receipt.extraction_model = data.extraction_model
@@ -189,7 +187,6 @@ async def upsert_receipt_from_drive(
     receipt.tax = data.tax
     receipt.currency = data.currency
     receipt.date = data.date
-    receipt.abn = data.abn
     receipt.receipt_number = data.receipt_number
     receipt.receipt_language = data.receipt_language
     receipt.extraction_model = data.extraction_model
