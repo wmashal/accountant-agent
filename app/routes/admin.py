@@ -5,7 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
-from sqlalchemy import select, func, extract, and_
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
@@ -264,23 +264,15 @@ async def upload_logo(
 class MonthlyStats(BaseModel):
     month: str          # "YYYY-MM"
     receipts: int
-    income: float
-    expense: float
-
-
-class VendorStats(BaseModel):
-    vendor: str
-    total: float
-    count: int
+    confirmed: int
+    pending: int
 
 
 class AccountantAnalytics(BaseModel):
     monthly: list[MonthlyStats]
-    top_vendors: list[VendorStats]
-    total_income: float
-    total_expense: float
     confirmed_count: int
     pending_count: int
+    error_count: int
 
 
 @router.get("/accountants/{accountant_id}/analytics", response_model=AccountantAnalytics)
@@ -299,26 +291,19 @@ async def get_accountant_analytics(
     now = datetime.now(timezone.utc)
     twelve_months_ago = (now.replace(day=1) - timedelta(days=365)).replace(day=1)
 
-    # Monthly breakdown: count, income sum, expense sum
+    # Monthly breakdown: total receipts + confirmed + pending (no cost filter)
     monthly_rows = (await session.execute(
         select(
             func.to_char(Receipt.created_at, 'YYYY-MM').label("month"),
             func.count(Receipt.id).label("receipts"),
-            func.coalesce(func.sum(
-                Receipt.cost.op("*")(
-                    func.cast(Receipt.transaction_type == "income", Receipt.cost.type)
-                )
-            ), 0).label("income"),
-            func.coalesce(func.sum(
-                Receipt.cost.op("*")(
-                    func.cast(Receipt.transaction_type == "expense", Receipt.cost.type)
-                )
-            ), 0).label("expense"),
+            func.count(Receipt.id).filter(Receipt.status == "confirmed").label("confirmed"),
+            func.count(Receipt.id).filter(
+                Receipt.status.in_(["pending_confirmation", "processing"])
+            ).label("pending"),
         )
         .where(
             Receipt.accountant_id == accountant_id,
             Receipt.created_at >= twelve_months_ago,
-            Receipt.cost.isnot(None),
         )
         .group_by("month")
         .order_by("month")
@@ -330,60 +315,35 @@ async def get_accountant_analytics(
         monthly_map[row.month] = MonthlyStats(
             month=row.month,
             receipts=row.receipts,
-            income=round(float(row.income or 0), 2),
-            expense=round(float(row.expense or 0), 2),
+            confirmed=row.confirmed,
+            pending=row.pending,
         )
 
     monthly: list[MonthlyStats] = []
     cursor = twelve_months_ago
     while cursor <= now:
         label = cursor.strftime("%Y-%m")
-        monthly.append(monthly_map.get(label, MonthlyStats(month=label, receipts=0, income=0.0, expense=0.0)))
-        # advance one month
+        monthly.append(monthly_map.get(label, MonthlyStats(month=label, receipts=0, confirmed=0, pending=0)))
         if cursor.month == 12:
             cursor = cursor.replace(year=cursor.year + 1, month=1)
         else:
             cursor = cursor.replace(month=cursor.month + 1)
 
-    # Top 10 vendors by total spend (expense only)
-    vendor_rows = (await session.execute(
-        select(
-            Receipt.vendor,
-            func.sum(Receipt.cost).label("total"),
-            func.count(Receipt.id).label("count"),
-        )
-        .where(
-            Receipt.accountant_id == accountant_id,
-            Receipt.transaction_type == "expense",
-            Receipt.vendor.isnot(None),
-            Receipt.cost.isnot(None),
-        )
-        .group_by(Receipt.vendor)
-        .order_by(func.sum(Receipt.cost).desc())
-        .limit(10)
-    )).all()
-
-    top_vendors = [
-        VendorStats(vendor=r.vendor, total=round(float(r.total), 2), count=r.count)
-        for r in vendor_rows
-    ]
-
-    # Totals
+    # Overall status counts (all time)
     totals = (await session.execute(
         select(
-            func.coalesce(func.sum(Receipt.cost).filter(Receipt.transaction_type == "income"), 0).label("income"),
-            func.coalesce(func.sum(Receipt.cost).filter(Receipt.transaction_type == "expense"), 0).label("expense"),
             func.count(Receipt.id).filter(Receipt.status == "confirmed").label("confirmed"),
-            func.count(Receipt.id).filter(Receipt.status.in_(["pending_confirmation", "processing"])).label("pending"),
+            func.count(Receipt.id).filter(
+                Receipt.status.in_(["pending_confirmation", "processing"])
+            ).label("pending"),
+            func.count(Receipt.id).filter(Receipt.status == "error").label("error"),
         )
-        .where(Receipt.accountant_id == accountant_id, Receipt.cost.isnot(None))
+        .where(Receipt.accountant_id == accountant_id)
     )).one()
 
     return AccountantAnalytics(
         monthly=monthly,
-        top_vendors=top_vendors,
-        total_income=round(float(totals.income), 2),
-        total_expense=round(float(totals.expense), 2),
         confirmed_count=totals.confirmed,
         pending_count=totals.pending,
+        error_count=totals.error,
     )

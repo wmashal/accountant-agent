@@ -57,23 +57,15 @@ export interface UpdateAccountantData {
 export interface MonthlyStats {
   month: string
   receipts: number
-  income: number
-  expense: number
-}
-
-export interface VendorStats {
-  vendor: string
-  total: number
-  count: number
+  confirmed: number
+  pending: number
 }
 
 export interface AccountantAnalytics {
   monthly: MonthlyStats[]
-  top_vendors: VendorStats[]
-  total_income: number
-  total_expense: number
   confirmed_count: number
   pending_count: number
+  error_count: number
 }
 
 export function getToken(): string | null {

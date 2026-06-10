@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { api, authApi, getToken, setToken, clearToken, CustomerSummary, Receipt, CreateCustomerData } from "./api"
 import "./App.css"
 
-function LoginPage({ onLogin }: { onLogin: () => void }) {
+function LoginPage({ onLogin }: { onLogin: (res: { display_name: string | null; company_name: string | null; logo_url: string | null }) => void }) {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -15,7 +15,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
     try {
       const res = await authApi.login(username, password)
       setToken(res.access_token)
-      onLogin()
+      onLogin(res)
     } catch {
       setError("Invalid username or password")
     } finally {
@@ -65,19 +65,29 @@ function formatMonth(ym: string) {
 
 export default function App() {
   const [token, setTokenState] = useState<string | null>(() => getToken())
+  const [profile, setProfile] = useState<{ displayName: string | null; companyName: string | null; logoUrl: string | null }>(() => {
+    try { return JSON.parse(localStorage.getItem('acct_profile') || 'null') || { displayName: null, companyName: null, logoUrl: null } }
+    catch { return { displayName: null, companyName: null, logoUrl: null } }
+  })
 
-  const handleLogin = () => setTokenState(getToken())
+  const handleLogin = (res: { display_name: string | null; company_name: string | null; logo_url: string | null }) => {
+    setTokenState(getToken())
+    const p = { displayName: res.display_name, companyName: res.company_name, logoUrl: res.logo_url }
+    setProfile(p)
+    localStorage.setItem('acct_profile', JSON.stringify(p))
+  }
 
   const handleLogout = () => {
     clearToken()
+    localStorage.removeItem('acct_profile')
     setTokenState(null)
   }
 
   if (!token) return <LoginPage onLogin={handleLogin} />
-  return <Dashboard onLogout={handleLogout} />
+  return <Dashboard onLogout={handleLogout} profile={profile} />
 }
 
-function Dashboard({ onLogout }: { onLogout: () => void }) {
+function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { displayName: string | null; companyName: string | null; logoUrl: string | null } }) {
   const [customers, setCustomers] = useState<CustomerSummary[]>([])
   const [selected, setSelected] = useState<CustomerSummary | null>(null)
   const [receipts, setReceipts] = useState<Receipt[]>([])
@@ -349,7 +359,10 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 
       <aside className="sidebar">
         <div className="sidebar-header">
-          <h1>Accountant</h1>
+          {profile.logoUrl && (
+            <img src={profile.logoUrl} alt="logo" style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover', marginBottom: '0.5rem' }} />
+          )}
+          <h1>{profile.companyName || profile.displayName || 'Accountant'}</h1>
           <p className="subtitle">Invoice Dashboard</p>
           <button onClick={onLogout} style={{ marginTop: "0.5rem", padding: "0.3rem 0.8rem", fontSize: "0.8rem", background: "transparent", border: "1px solid #ccc", borderRadius: "4px", cursor: "pointer", color: "#666" }}>
             Logout

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, PieChart, Pie, Cell,
+  ResponsiveContainer,
 } from 'recharts'
 import { adminApi, AccountantOut, AccountantAnalytics } from '../api'
 
@@ -9,8 +9,6 @@ interface Props {
   accountantId: number
   onBack: () => void
 }
-
-const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#84cc16', '#ec4899', '#14b8a6']
 
 function StatCard({ label, value, sub, color = '#4f46e5' }: { label: string; value: string | number; sub?: string; color?: string }) {
   return (
@@ -45,10 +43,9 @@ export default function AccountantDetailPage({ accountantId, onBack }: Props) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    Promise.all([adminApi.getAccountant(accountantId), adminApi.getAnalytics(accountantId)])
-      .then(([a, an]) => {
+    adminApi.getAccountant(accountantId)
+      .then(a => {
         setAcct(a)
-        setAnalytics(an)
         setForm({
           username: a.username ?? '',
           display_name: a.display_name ?? '',
@@ -61,9 +58,15 @@ export default function AccountantDetailPage({ accountantId, onBack }: Props) {
           is_active: a.is_active,
           new_password: '',
         })
+        setLoading(false)
+        adminApi.getAnalytics(accountantId)
+          .then(setAnalytics)
+          .catch(console.error)
       })
-      .catch(console.error)
-      .finally(() => setLoading(false))
+      .catch(e => {
+        console.error(e)
+        setLoading(false)
+      })
   }, [accountantId])
 
   async function handleSave() {
@@ -103,8 +106,6 @@ export default function AccountantDetailPage({ accountantId, onBack }: Props) {
 
   if (loading) return <div style={{ padding: 40, color: '#6b7280' }}>Loading…</div>
   if (!acct) return <div style={{ padding: 40, color: '#ef4444' }}>Accountant not found</div>
-
-  const currency = acct.default_currency
 
   const chartData = (analytics?.monthly ?? []).map(m => ({
     ...m,
@@ -149,102 +150,44 @@ export default function AccountantDetailPage({ accountantId, onBack }: Props) {
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 4 }}>
         <StatCard label="Customers" value={acct.customer_count} color="#4f46e5" />
         <StatCard label="Total Receipts" value={acct.receipt_count} color="#10b981" />
-        <StatCard label="Total Income" value={`${currency} ${(analytics?.total_income ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`} color="#10b981" />
-        <StatCard label="Total Expense" value={`${currency} ${(analytics?.total_expense ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`} color="#ef4444" />
-        <StatCard label="Confirmed" value={analytics?.confirmed_count ?? 0} color="#4f46e5" />
+        <StatCard label="Confirmed" value={analytics?.confirmed_count ?? 0} color="#10b981" />
         <StatCard label="Pending" value={analytics?.pending_count ?? 0} color="#f59e0b" />
+        <StatCard label="Errors" value={analytics?.error_count ?? 0} color="#ef4444" />
       </div>
 
       {/* Charts */}
-      {hasAnyData ? (
+      {analytics === null ? (
+        <div style={{ background: '#fff', borderRadius: 12, padding: 32, textAlign: 'center', color: '#9ca3af', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', margin: '20px 0' }}>
+          Loading analytics…
+        </div>
+      ) : !hasAnyData ? (
+        <div style={{ background: '#fff', borderRadius: 12, padding: 32, textAlign: 'center', color: '#9ca3af', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', margin: '20px 0' }}>
+          No receipt data yet
+        </div>
+      ) : (
         <>
-          <SectionTitle>Monthly Receipts — Last 12 Months</SectionTitle>
+          <SectionTitle>Monthly Receipts Processed — Last 12 Months</SectionTitle>
           <div style={{ background: '#fff', borderRadius: 12, padding: '20px 16px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', marginBottom: 20 }}>
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={240}>
               <BarChart data={chartData} barSize={22}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
                 <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#6b7280' }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#6b7280' }} />
                 <Tooltip
-                  formatter={(val) => [Number(val), 'Receipts']}
+                  formatter={(val, name) => [Number(val), name === 'receipts' ? 'Total' : name === 'confirmed' ? 'Confirmed' : 'Pending']}
                   labelFormatter={l => `Month: ${l}`}
                   contentStyle={{ borderRadius: 8, fontSize: 13 }}
+                />
+                <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: 13 }}
+                  formatter={(value) => value === 'receipts' ? 'Total' : value === 'confirmed' ? 'Confirmed' : 'Pending'}
                 />
                 <Bar dataKey="receipts" fill="#4f46e5" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="confirmed" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="pending" fill="#f59e0b" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
-
-          <SectionTitle>Monthly Income vs Expense ({currency})</SectionTitle>
-          <div style={{ background: '#fff', borderRadius: 12, padding: '20px 16px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', marginBottom: 20 }}>
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={chartData} barSize={18}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                <XAxis dataKey="label" tick={{ fontSize: 12, fill: '#6b7280' }} />
-                <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
-                <Tooltip
-                  formatter={(val, name) => {
-                    const n = Number(val ?? 0)
-                    const s = String(name ?? '')
-                    return [`${currency} ${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, s.charAt(0).toUpperCase() + s.slice(1)]
-                  }}
-                  labelFormatter={l => `Month: ${l}`}
-                  contentStyle={{ borderRadius: 8, fontSize: 13 }}
-                />
-                <Legend iconType="circle" iconSize={10} wrapperStyle={{ fontSize: 13 }} />
-                <Bar dataKey="income" fill="#10b981" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="expense" fill="#ef4444" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {analytics && analytics.top_vendors.length > 0 && (
-            <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-              <div style={{ flex: 2, minWidth: 300, background: '#fff', borderRadius: 12, padding: '20px 16px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: '#374151', marginBottom: 14 }}>Top Vendors by Spend</div>
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart data={analytics.top_vendors} layout="vertical" barSize={16}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 11, fill: '#6b7280' }} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
-                    <YAxis type="category" dataKey="vendor" tick={{ fontSize: 11, fill: '#374151' }} width={130} />
-                    <Tooltip
-                      formatter={(val) => [`${currency} ${Number(val ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 'Total spend']}
-                      contentStyle={{ borderRadius: 8, fontSize: 13 }}
-                    />
-                    <Bar dataKey="total" radius={[0, 4, 4, 0]}>
-                      {analytics.top_vendors.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div style={{ flex: 1, minWidth: 220, background: '#fff', borderRadius: 12, padding: '20px 16px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: '#374151', marginBottom: 14 }}>Spend Distribution</div>
-                <ResponsiveContainer width="100%" height={240}>
-                  <PieChart>
-                    <Pie
-                      data={analytics.top_vendors}
-                      dataKey="total"
-                      nameKey="vendor"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={90}
-                      label={({ percent }: { percent?: number }) => (percent ?? 0) > 0.05 ? `${((percent ?? 0) * 100).toFixed(0)}%` : ''}
-                      labelLine={false}
-                    >
-                      {analytics.top_vendors.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip formatter={(val) => `${currency} ${Number(val ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`} contentStyle={{ borderRadius: 8, fontSize: 13 }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
         </>
-      ) : (
-        <div style={{ background: '#fff', borderRadius: 12, padding: 32, textAlign: 'center', color: '#9ca3af', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', margin: '20px 0' }}>
-          No receipt data yet
-        </div>
       )}
 
       {/* Edit form */}

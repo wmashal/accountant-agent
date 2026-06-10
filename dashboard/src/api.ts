@@ -49,6 +49,8 @@ export interface LoginResponse {
   token_type: string
   accountant_id: number | null
   display_name: string | null
+  company_name: string | null
+  logo_url: string | null
 }
 
 // ---------------------------------------------------------------------------
