@@ -1,6 +1,56 @@
 import { useState, useEffect, useCallback } from "react"
-import { api, CustomerSummary, Receipt, CreateCustomerData } from "./api"
+import { api, authApi, getToken, setToken, clearToken, CustomerSummary, Receipt, CreateCustomerData } from "./api"
 import "./App.css"
+
+function LoginPage({ onLogin }: { onLogin: (res: { display_name: string | null; company_name: string | null; logo_url: string | null }) => void }) {
+  const [username, setUsername] = useState("")
+  const [password, setPassword] = useState("")
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    setLoading(true)
+    try {
+      const res = await authApi.login(username, password)
+      setToken(res.access_token)
+      onLogin(res)
+    } catch {
+      setError("Invalid username or password")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", background: "#f5f5f5" }}>
+      <form onSubmit={submit} style={{ background: "#fff", padding: "2rem", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", minWidth: "320px", display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <h2 style={{ margin: 0, textAlign: "center" }}>Dashboard Login</h2>
+        {error && <div style={{ color: "red", fontSize: "0.9rem" }}>{error}</div>}
+        <input
+          type="text"
+          placeholder="Username"
+          value={username}
+          onChange={e => setUsername(e.target.value)}
+          required
+          style={{ padding: "0.5rem", borderRadius: "4px", border: "1px solid #ccc", fontSize: "1rem" }}
+        />
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          required
+          style={{ padding: "0.5rem", borderRadius: "4px", border: "1px solid #ccc", fontSize: "1rem" }}
+        />
+        <button type="submit" disabled={loading} style={{ padding: "0.6rem", background: "#007bff", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "1rem" }}>
+          {loading ? "Logging in…" : "Login"}
+        </button>
+      </form>
+    </div>
+  )
+}
 
 // Format a YYYY-MM string to a human-readable month label
 function formatMonth(ym: string) {
@@ -14,6 +64,30 @@ function formatMonth(ym: string) {
 }
 
 export default function App() {
+  const [token, setTokenState] = useState<string | null>(() => getToken())
+  const [profile, setProfile] = useState<{ displayName: string | null; companyName: string | null; logoUrl: string | null }>(() => {
+    try { return JSON.parse(localStorage.getItem('acct_profile') || 'null') || { displayName: null, companyName: null, logoUrl: null } }
+    catch { return { displayName: null, companyName: null, logoUrl: null } }
+  })
+
+  const handleLogin = (res: { display_name: string | null; company_name: string | null; logo_url: string | null }) => {
+    setTokenState(getToken())
+    const p = { displayName: res.display_name, companyName: res.company_name, logoUrl: res.logo_url }
+    setProfile(p)
+    localStorage.setItem('acct_profile', JSON.stringify(p))
+  }
+
+  const handleLogout = () => {
+    clearToken()
+    localStorage.removeItem('acct_profile')
+    setTokenState(null)
+  }
+
+  if (!token) return <LoginPage onLogin={handleLogin} />
+  return <Dashboard onLogout={handleLogout} profile={profile} />
+}
+
+function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { displayName: string | null; companyName: string | null; logoUrl: string | null } }) {
   const [customers, setCustomers] = useState<CustomerSummary[]>([])
   const [selected, setSelected] = useState<CustomerSummary | null>(null)
   const [receipts, setReceipts] = useState<Receipt[]>([])
@@ -285,8 +359,14 @@ export default function App() {
 
       <aside className="sidebar">
         <div className="sidebar-header">
-          <h1>Accountant</h1>
+          {profile.logoUrl && (
+            <img src={profile.logoUrl} alt="logo" style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover', marginBottom: '0.5rem' }} />
+          )}
+          <h1>{profile.companyName || profile.displayName || 'Accountant'}</h1>
           <p className="subtitle">Invoice Dashboard</p>
+          <button onClick={onLogout} style={{ marginTop: "0.5rem", padding: "0.3rem 0.8rem", fontSize: "0.8rem", background: "transparent", border: "1px solid #ccc", borderRadius: "4px", cursor: "pointer", color: "#666" }}>
+            Logout
+          </button>
         </div>
         <div className="search-wrap">
           <input

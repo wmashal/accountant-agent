@@ -12,15 +12,19 @@ from app.db import Base
 
 class Customer(Base):
     __tablename__ = "customers"
+    __table_args__ = (
+        sa.UniqueConstraint("phone_number", "accountant_id", name="uq_customer_phone_accountant"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    phone_number: Mapped[str] = mapped_column(sa.String(50), unique=True, index=True)
+    phone_number: Mapped[str] = mapped_column(sa.String(50), index=True)
     display_name: Mapped[Optional[str]] = mapped_column(sa.String(200), nullable=True)
     company_name: Mapped[Optional[str]] = mapped_column(sa.String(200), nullable=True)
     company_id: Mapped[Optional[str]] = mapped_column(sa.String(100), nullable=True)
     drive_folder_id: Mapped[Optional[str]] = mapped_column(sa.String(200), nullable=True)
     source: Mapped[str] = mapped_column(sa.String(20), default="whatsapp")
     default_currency: Mapped[str] = mapped_column(sa.String(10), default="USD")
+    accountant_id: Mapped[int] = mapped_column(sa.ForeignKey("accountants.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -50,6 +54,7 @@ class Receipt(Base):
     status: Mapped[str] = mapped_column(sa.String(30), default="processing")
     file_url: Mapped[Optional[str]] = mapped_column(sa.String(500), nullable=True)
     drive_file_id: Mapped[Optional[str]] = mapped_column(sa.String(200), nullable=True, index=True)
+    accountant_id: Mapped[int] = mapped_column(sa.ForeignKey("accountants.id"), index=True)
 
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),

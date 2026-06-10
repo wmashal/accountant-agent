@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.db import get_session
+from app.middleware.auth import get_current_accountant
 from app.models.receipt import Customer, Receipt
 from app.services.db_service import create_customer
 
@@ -114,19 +115,30 @@ def _customer_summary(c: Customer, receipts: list) -> CustomerSummary:
 async def create_customer_endpoint(
     body: CreateCustomerRequest,
     session: AsyncSession = Depends(get_session),
+    current: dict = Depends(get_current_accountant),
 ):
     """Create a customer from the dashboard and provision a Drive folder if configured."""
-    from app.config import get_settings
-    settings = get_settings()
+    accountant_id = int(current["sub"])
 
+    from app.config import get_settings
+    from app.db import SessionLocal
+    from app.models.accountant import Accountant
+    from sqlalchemy import select as sa_select
+
+    # Load accountant to get their Drive root folder
+    async with SessionLocal() as s:
+        acc = (await s.execute(sa_select(Accountant).where(Accountant.id == accountant_id))).scalar_one_or_none()
+    drive_root = acc.google_drive_root_folder_id if acc else None
+
+    settings = get_settings()
     drive_folder_id = None
-    if settings.google_drive_folder_id and settings.google_service_account_file:
+    if drive_root and settings.google_service_account_file:
         try:
             from app.services.google_drive import create_customer_folder
             drive_folder_id = await create_customer_folder(
                 display_name=body.display_name,
                 company_id=body.company_id,
-                root_folder_id=settings.google_drive_folder_id,
+                root_folder_id=drive_root,
             )
         except Exception as e:
             logger.warning(f"Drive folder creation failed (non-fatal): {e}")
@@ -139,13 +151,22 @@ async def create_customer_endpoint(
         phone_number=body.phone_number,
         drive_folder_id=drive_folder_id,
         default_currency=body.default_currency,
+        accountant_id=accountant_id,
     )
     return _customer_summary(customer, [])
 
 
 @router.get("/customers", response_model=list[CustomerSummary])
-async def list_customers(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(Customer).order_by(Customer.created_at.desc()))
+async def list_customers(
+    session: AsyncSession = Depends(get_session),
+    current: dict = Depends(get_current_accountant),
+):
+    accountant_id = int(current["sub"])
+    result = await session.execute(
+        select(Customer)
+        .where(Customer.accountant_id == accountant_id)
+        .order_by(Customer.created_at.desc())
+    )
     customers = result.scalars().all()
 
     summaries = []
@@ -157,7 +178,19 @@ async def list_customers(session: AsyncSession = Depends(get_session)):
 
 
 @router.get("/customers/{customer_id}/receipts", response_model=list[ReceiptOut])
-async def list_customer_receipts(customer_id: int, session: AsyncSession = Depends(get_session)):
+async def list_customer_receipts(
+    customer_id: int,
+    session: AsyncSession = Depends(get_session),
+    current: dict = Depends(get_current_accountant),
+):
+    accountant_id = int(current["sub"])
+    # Verify the customer belongs to this accountant
+    customer = (await session.execute(
+        select(Customer).where(Customer.id == customer_id, Customer.accountant_id == accountant_id)
+    )).scalar_one_or_none()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
     result = await session.execute(
         select(Receipt)
         .where(Receipt.customer_id == customer_id)
@@ -193,8 +226,12 @@ async def update_receipt(
     receipt_id: int,
     body: UpdateReceiptRequest,
     session: AsyncSession = Depends(get_session),
+    current: dict = Depends(get_current_accountant),
 ):
-    result = await session.execute(select(Receipt).where(Receipt.id == receipt_id))
+    accountant_id = int(current["sub"])
+    result = await session.execute(
+        select(Receipt).where(Receipt.id == receipt_id, Receipt.accountant_id == accountant_id)
+    )
     receipt = result.scalar_one_or_none()
     if not receipt:
         raise HTTPException(status_code=404, detail="Receipt not found")
@@ -246,8 +283,12 @@ async def update_receipt(
 async def delete_receipt(
     receipt_id: int,
     session: AsyncSession = Depends(get_session),
+    current: dict = Depends(get_current_accountant),
 ):
-    result = await session.execute(select(Receipt).where(Receipt.id == receipt_id))
+    accountant_id = int(current["sub"])
+    result = await session.execute(
+        select(Receipt).where(Receipt.id == receipt_id, Receipt.accountant_id == accountant_id)
+    )
     receipt = result.scalar_one_or_none()
     if not receipt:
         raise HTTPException(status_code=404, detail="Receipt not found")
@@ -258,7 +299,6 @@ async def delete_receipt(
     await session.delete(receipt)
     await session.commit()
 
-    # Delete from GCS
     if file_url and file_url.startswith("https://storage.googleapis.com/"):
         from app.config import get_settings
         settings = get_settings()
@@ -266,25 +306,9 @@ async def delete_receipt(
             from app.services.gcs_storage import delete_receipt as gcs_delete
             await gcs_delete(file_url, settings.gcs_bucket_name)
 
-    # Delete from Drive
     if drive_file_id:
         from app.services.google_drive import delete_drive_file
         await delete_drive_file(drive_file_id)
-
-
-
-async def update_customer_name(
-    customer_id: int,
-    body: dict,
-    session: AsyncSession = Depends(get_session),
-):
-    result = await session.execute(select(Customer).where(Customer.id == customer_id))
-    customer = result.scalar_one_or_none()
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    customer.display_name = body.get("display_name", "").strip() or None
-    await session.commit()
-    return {"ok": True}
 
 
 @router.patch("/customers/{customer_id}/profile")
@@ -292,8 +316,12 @@ async def update_customer_profile(
     customer_id: int,
     body: UpdateCustomerProfileRequest,
     session: AsyncSession = Depends(get_session),
+    current: dict = Depends(get_current_accountant),
 ):
-    result = await session.execute(select(Customer).where(Customer.id == customer_id))
+    accountant_id = int(current["sub"])
+    result = await session.execute(
+        select(Customer).where(Customer.id == customer_id, Customer.accountant_id == accountant_id)
+    )
     customer = result.scalar_one_or_none()
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
@@ -307,7 +335,6 @@ async def update_customer_profile(
         new_phone = body.phone_number.strip()
         if new_phone:
             customer.phone_number = new_phone
-            # If this customer was Drive-only, they now have a real phone
             if customer.source == "drive":
                 customer.source = "both"
     if body.default_currency is not None:
@@ -316,3 +343,28 @@ async def update_customer_profile(
             customer.default_currency = currency
     await session.commit()
     return {"ok": True}
+
+
+@router.delete("/customers/{customer_id}", status_code=204)
+async def delete_customer(
+    customer_id: int,
+    session: AsyncSession = Depends(get_session),
+    current: dict = Depends(get_current_accountant),
+):
+    accountant_id = int(current["sub"])
+    result = await session.execute(
+        select(Customer).where(Customer.id == customer_id, Customer.accountant_id == accountant_id)
+    )
+    customer = result.scalar_one_or_none()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    # Delete all receipts for this customer first
+    receipts_result = await session.execute(
+        select(Receipt).where(Receipt.customer_id == customer_id)
+    )
+    for receipt in receipts_result.scalars().all():
+        await session.delete(receipt)
+
+    await session.delete(customer)
+    await session.commit()
