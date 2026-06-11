@@ -122,6 +122,7 @@ export const en = {
 
   // Export
   exportCsv: 'Export CSV',
+  filterDateInvoice: 'Date (Invoice)',
 
   // Dynamic helpers
   invoicesCount: (n: number) => `${n} invoice${n !== 1 ? 's' : ''}`,

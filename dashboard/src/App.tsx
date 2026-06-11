@@ -698,7 +698,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                   </label>
 
                   <label className="filter-label">
-                    {t.colDate} (Invoice)
+                    {t.filterDateInvoice}
                     <select
                       className="filter-select"
                       value={invoiceMonthFilter}

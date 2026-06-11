@@ -124,6 +124,7 @@ export const ar: Translations = {
 
   // Export
   exportCsv: 'تصدير CSV',
+  filterDateInvoice: 'التاريخ (فاتورة)',
 
   // Dynamic helpers
   invoicesCount: (n: number) => `${n} ${n === 1 ? 'فاتورة' : 'فواتير'}`,
