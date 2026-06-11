@@ -98,6 +98,17 @@ export default function App() {
     document.documentElement.lang = lang
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Refresh profile from server on mount (picks up admin changes to display_name/company_name)
+  useEffect(() => {
+    if (!token) return
+    authApi.getMe().then(res => {
+      const p = { displayName: res.display_name, companyName: res.company_name, logoUrl: res.logo_url }
+      setProfile(p)
+      localStorage.setItem('acct_profile', JSON.stringify(p))
+      if (res.language === 'ar' || res.language === 'en') setLang(res.language)
+    }).catch(() => { /* silently ignore — stale cache is fine as fallback */ })
+  }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleLogin = (res: { display_name: string | null; company_name: string | null; logo_url: string | null; language?: string | null }) => {
     setTokenState(getToken())
     const p = { displayName: res.display_name, companyName: res.company_name, logoUrl: res.logo_url }
@@ -479,7 +490,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
           {profile.logoUrl && (
             <img src={profile.logoUrl} alt="logo" style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover', marginBottom: '0.5rem' }} />
           )}
-          <h1>{profile.companyName || profile.displayName || 'Accountant'}</h1>
+          <h1>{profile.displayName || profile.companyName || 'Accountant'}</h1>
           <p className="subtitle">{t.invoiceDashboard}</p>
           <button onClick={onLogout} style={{ marginTop: "0.5rem", padding: "0.3rem 0.8rem", fontSize: "0.8rem", background: "transparent", border: "1px solid #ccc", borderRadius: "4px", cursor: "pointer", color: "#666" }}>
             {t.logout}

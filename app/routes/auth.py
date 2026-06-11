@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.middleware.auth import create_token
+from app.middleware.auth import create_token, get_current_accountant
 from app.config import get_settings
 from app.models.accountant import Accountant
 
@@ -71,3 +71,28 @@ async def admin_login(body: LoginRequest):
         expires_hours=8,
     )
     return LoginResponse(access_token=token)
+
+
+class ProfileResponse(BaseModel):
+    display_name: str | None = None
+    company_name: str | None = None
+    logo_url: str | None = None
+    language: str | None = None
+
+
+@router.get("/api/auth/me", response_model=ProfileResponse)
+async def get_me(
+    payload: dict = Depends(get_current_accountant),
+    session: AsyncSession = Depends(get_session),
+):
+    accountant_id = int(payload["sub"])
+    result = await session.execute(select(Accountant).where(Accountant.id == accountant_id))
+    accountant = result.scalar_one_or_none()
+    if not accountant:
+        raise HTTPException(status_code=404, detail="Accountant not found")
+    return ProfileResponse(
+        display_name=accountant.display_name,
+        company_name=accountant.company_name,
+        logo_url=accountant.logo_url,
+        language=accountant.default_language,
+    )
