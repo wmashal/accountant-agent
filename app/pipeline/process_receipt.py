@@ -2,11 +2,26 @@ import asyncio
 import io
 import json
 import logging
-from app.pipeline.ocr import fetch_media, ocr_pdf
+import httpx
 from app.pipeline.extract import extract
 from app.pipeline.normalize import normalize
 from app.config import get_settings as _get_settings
 
+
+async def fetch_media(media_url: str) -> bytes:
+    """Download media file from Twilio URL, following CDN redirects."""
+    settings = _get_settings()
+    async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
+        resp = await client.get(
+            media_url,
+            auth=(settings.twilio_account_sid, settings.twilio_auth_token),
+        )
+    if resp.status_code in (301, 302, 307, 308):
+        cdn_url = resp.headers["location"]
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+            resp = await client.get(cdn_url)
+    resp.raise_for_status()
+    return resp.content
 
 async def upload_receipt(file_bytes: bytes, phone_number: str, message_sid: str, content_type: str) -> str | None:
     """Route to GCS or local storage depending on config."""

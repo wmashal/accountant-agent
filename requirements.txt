@@ -7,7 +7,6 @@ twilio==9.3.7
 google-auth==2.36.0
 google-api-python-client==2.154.0
 google-cloud-storage==2.18.2
-anthropic==0.39.0
 sqlalchemy==2.0.36
 asyncpg==0.30.0
 alembic==1.14.0

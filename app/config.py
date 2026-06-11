@@ -8,14 +8,8 @@ class Settings(BaseSettings):
     twilio_auth_token: str
     twilio_from_number: str = ""
 
-    # LlamaParse
-    llama_cloud_api_key: str
-
     # Gemini
     gemini_api_key: str
-
-    # Anthropic
-    anthropic_api_key: str
 
     # Google
     google_service_account_file: str
