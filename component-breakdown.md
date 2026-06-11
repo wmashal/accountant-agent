@@ -17,16 +17,14 @@ accountant-agent/
 │   │   ├── dashboard.py            # GET/POST/PATCH /api/dashboard/* — admin API
 │   │   └── health.py               # GET /health
 │   ├── pipeline/
-│   │   ├── process_receipt.py      # WhatsApp pipeline + Drive pipeline + batch settle + auto-confirm
-│   │   ├── ocr.py                  # LlamaParse (unused) + Twilio media fetch
-│   │   ├── extract.py              # Gemini (3 retries) + Claude fallback
+│   │   ├── process_receipt.py      # WhatsApp pipeline + Drive pipeline + batch settle + auto-confirm + Twilio media fetch
+│   │   ├── extract.py              # Gemini (3 retries), raises on failure
 │   │   └── normalize.py            # Date, ABN, GST, currency normalization
 │   ├── services/
 │   │   ├── twilio_client.py        # Send WhatsApp messages (summary, registration, confirm)
 │   │   ├── local_storage.py        # Save files to /app/receipts/ Docker volume
 │   │   ├── db_service.py           # Postgres CRUD (WhatsApp + Drive)
 │   │   ├── gemini_client.py        # Gemini Vision API calls
-│   │   ├── claude_client.py        # Claude API calls (image fallback only)
 │   │   ├── redis_client.py         # Redis singleton
 │   │   ├── google_drive.py         # Drive folder creation, file listing, download, move
 │   │   ├── drive_poller.py         # asyncio background poller — polls Drive folders every 30s
@@ -178,7 +176,7 @@ class Receipt(Base):
     abn: str | None
     receipt_number: str | None      # Invoice/receipt number extracted from document
     receipt_language: str | None    # BCP 47
-    extraction_model: str | None    # gemini-2.5-flash or claude-sonnet-4-5
+    extraction_model: str | None    # gemini-2.5-flash
     transaction_type: str           # income or expense — auto-detected from payer field
     status: str                     # processing / pending_confirmation / confirmed / rejected / error
     file_url: str | None
@@ -295,10 +293,6 @@ if len(reader.pages) > 1:
 Primary: Gemini 2.5 Flash
   → retry up to 3x on 5xx with 3s / 6s backoff
   → validates result (vendor + cost required and non-empty)
-
-Fallback (images only): Claude Sonnet 4.5
-  → triggered if all Gemini attempts fail or return invalid JSON
-  → NOT used for PDFs (Claude does not support PDF as image)
 
 Failure: raise ValueError → process_single_receipt catches → status=error
 ```
@@ -476,14 +470,8 @@ TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_FROM_NUMBER=+1415xxxxxxx
 
-# LlamaParse (present in config but pipeline uses Gemini Vision directly for PDFs)
-LLAMA_CLOUD_API_KEY=llx-xxxxxxxxxxxxxxxxxxxx
-
 # Gemini
 GEMINI_API_KEY=AIzaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
-# Claude (Anthropic) — image fallback only
-ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxx
 
 # Google Drive — service account + root folder
 GOOGLE_SERVICE_ACCOUNT_FILE=/secrets/credentials.json
