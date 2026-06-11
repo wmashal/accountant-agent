@@ -120,6 +120,9 @@ export const en = {
   months: ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'],
 
+  // Export
+  exportCsv: 'Export CSV',
+
   // Dynamic helpers
   invoicesCount: (n: number) => `${n} invoice${n !== 1 ? 's' : ''}`,
   deleteConfirm: (vendor: string) => `Delete receipt from ${vendor}?`,

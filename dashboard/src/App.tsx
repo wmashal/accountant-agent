@@ -284,6 +284,30 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
     await loadCustomers()
   }
 
+  const exportCsv = (rows: Receipt[]) => {
+    const headers = [t.colDate, t.colUploadDate, t.colReceiptNo, t.colSupplier, t.colAmount, 'Currency', t.colTax, 'Tax Rate', t.colType, t.colStatus]
+    const lines = rows.map(r => [
+      r.date || '',
+      r.upload_date ? r.upload_date.slice(0, 10) : '',
+      r.receipt_number || '',
+      r.vendor || '',
+      r.cost != null ? r.cost.toFixed(2) : '',
+      r.currency || '',
+      r.tax != null ? r.tax.toFixed(2) : '',
+      r.tax_rate != null ? `${(r.tax_rate * 100).toFixed(0)}%` : '',
+      r.transaction_type,
+      r.status,
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+    const csv = [headers.join(','), ...lines].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${selected?.display_name || 'receipts'}_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const openPreview = (url: string) => {
     const isPdf = url.toLowerCase().endsWith(".pdf")
     setPreviewIsPdf(isPdf)
@@ -329,6 +353,15 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
 
   const totalIncome = receipts.filter(r => r.transaction_type === "income" && r.status === "confirmed").reduce((s, r) => s + (r.cost || 0), 0)
   const totalExpense = receipts.filter(r => r.transaction_type === "expense" && r.status === "confirmed").reduce((s, r) => s + (r.cost || 0), 0)
+
+  // Filtered receipts for export (mirrors IIFE filter logic)
+  const filteredForExport = (() => {
+    let f = receipts.filter(r => typeFilter === "all" || r.transaction_type === typeFilter)
+    if (invoiceMonthFilter !== "all") f = f.filter(r => (r.date && r.date.length >= 7 ? r.date.slice(0, 7) : "Unknown") === invoiceMonthFilter)
+    if (uploadMonthFilter !== "all") f = f.filter(r => (r.upload_date && r.upload_date.length >= 7 ? r.upload_date.slice(0, 7) : "Unknown") === uploadMonthFilter)
+    if (supplierFilter !== "all") f = f.filter(r => (r.vendor || "Unknown") === supplierFilter)
+    return f
+  })()
 
   // Derive unique filter options from current receipts
   const invoiceMonths = Array.from(new Set(receipts.map(r => r.date && r.date.length >= 7 ? r.date.slice(0, 7) : "Unknown"))).sort((a, b) => b.localeCompare(a))
@@ -696,6 +729,15 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                   </label>
                 </div>
               </div>
+
+              {/* Export button */}
+              <button
+                className="btn-export"
+                onClick={() => exportCsv(filteredForExport)}
+                disabled={filteredForExport.length === 0}
+              >
+                ↓ {t.exportCsv}
+              </button>
 
               {/* Invoices grouped by selected month dimension */}
               {(() => {

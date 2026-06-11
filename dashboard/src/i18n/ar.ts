@@ -122,6 +122,9 @@ export const ar: Translations = {
   months: ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
     'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'],
 
+  // Export
+  exportCsv: 'تصدير CSV',
+
   // Dynamic helpers
   invoicesCount: (n: number) => `${n} ${n === 1 ? 'فاتورة' : 'فواتير'}`,
   deleteConfirm: (vendor: string) => `حذف فاتورة ${vendor}؟`,
