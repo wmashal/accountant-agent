@@ -198,7 +198,7 @@
 /* Move and Delete buttons — kept for edit row save/cancel */
 .btn-refresh { background: #f3f4f6; border: 1px solid #d1d5db; color: #374151; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; align-self: center; margin-left: auto; }
 .btn-refresh:hover { background: #e5e7eb; }
-.btn-export { padding: 6px 14px; background: #f0fdf4; color: #16a34a; border: 1px solid #86efac; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.15s; align-self: center; }
+.btn-export { margin-left: auto; padding: 6px 14px; background: #f0fdf4; color: #16a34a; border: 1px solid #86efac; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.15s; align-self: flex-end; }
 .btn-export:hover { background: #dcfce7; border-color: #4ade80; }
 .btn-export:disabled { opacity: 0.4; cursor: default; }
 [dir="rtl"] .btn-export { margin-left: 0; margin-right: auto; }
