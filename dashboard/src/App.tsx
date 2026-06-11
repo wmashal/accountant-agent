@@ -87,8 +87,9 @@ export default function App() {
   return <Dashboard onLogout={handleLogout} profile={profile} />
 }
 
-// Column resize hook
-const DEFAULT_COL_WIDTHS = [110, 100, 100, 220, 120, 120, 110, 105, 55, 110]
+// Column resize hook — only first 9 cols are resizable; last col (Actions) is sticky/fixed
+const DEFAULT_COL_WIDTHS = [105, 105, 90, 180, 115, 130, 100, 100, 55]
+const ACTIONS_COL_WIDTH = 115
 
 function useColResize(initial: number[]) {
   const [widths, setWidths] = useState(initial)
@@ -706,23 +707,18 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                       {!collapsed && (
                         <table className="receipts-table">
                           <colgroup>
-                            {colWidths.map((w, i) => (
-                              <col key={i} style={{ width: i === colWidths.length - 1 ? `${w}px` : `${w}px` }} />
-                            ))}
+                            {colWidths.map((w, i) => <col key={i} style={{ width: w }} />)}
+                            <col style={{ width: ACTIONS_COL_WIDTH }} />
                           </colgroup>
                           <thead>
                             <tr>
-                              {["Invoice Date","Upload Date","Invoice #","Supplier","Amount","Tax","Type","Status","File","Actions"].map((label, i) => (
-                                <th key={i} style={{ position: "relative", width: colWidths[i] }}>
+                              {["Invoice Date","Upload Date","Invoice #","Supplier","Amount","Tax","Type","Status","File"].map((label, i) => (
+                                <th key={i} style={{ width: colWidths[i] }}>
                                   {label}
-                                  {i < 9 && (
-                                    <span
-                                      className="col-resize-handle"
-                                      onMouseDown={e => onColResizeMouseDown(i, e)}
-                                    />
-                                  )}
+                                  <span className="col-resize-handle" onMouseDown={e => onColResizeMouseDown(i, e)} />
                                 </th>
                               ))}
+                              <th className="actions-th">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -766,7 +762,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                       <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="file-link-btn">Drive</a>
                                     ) : "—"}
                                   </td>
-                                  <td className="action-cell">
+                                  <td className="action-cell actions-td">
                                     <button className="btn-save btn-sm" onClick={() => saveEdit(r)}>Save</button>
                                     <button className="btn-cancel btn-sm" onClick={() => setEditingReceiptId(null)}>Cancel</button>
                                   </td>
@@ -801,7 +797,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                       <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="file-link-btn">Drive</a>
                                     ) : "—"}
                                   </td>
-                                  <td className="action-cell">
+                                  <td className="action-cell actions-td">
                                     <button className="btn-icon btn-icon-move" onClick={() => toggleType(r)} title={`Move to ${r.transaction_type === 'income' ? 'Expense' : 'Income'}`}>⇄</button>
                                     <button className="btn-icon btn-icon-edit" onClick={() => startEdit(r)} title="Edit">✎</button>
                                     <button className="btn-icon btn-icon-delete" onClick={() => deleteReceipt(r)} title="Delete">✕</button>
@@ -818,7 +814,8 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                 {monthExpense > 0 && <span className="expense-total">-{ccy} {monthExpense.toFixed(2)}</span>}
                               </td>
                               <td>{monthTax > 0 ? `${ccy} ${monthTax.toFixed(2)}` : "—"}</td>
-                              <td colSpan={4}></td>
+                              <td colSpan={3}></td>
+                              <td className="actions-td"></td>
                             </tr>
                           </tbody>
                         </table>
