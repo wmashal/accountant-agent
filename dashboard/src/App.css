@@ -77,7 +77,7 @@
 
 /* File column spacing */
 .receipts-table th:nth-child(9), .receipts-table td:nth-child(9) { padding-right: 16px; }
-.actions-th, .actions-td { position: sticky; right: 0; background: #f9fafb; z-index: 2; border-left: 1px solid #e5e7eb; width: 130px; min-width: 130px; }
+.actions-th, .actions-td { position: sticky; right: 0; background: #f9fafb; z-index: 2; border-left: 1px solid #e5e7eb; width: 172px; min-width: 172px; }
 .actions-td { background: #fff; }
 .receipts-table tr:hover .actions-td { background: #fafafa; }
 .month-total-row .actions-td { background: #f0f9ff !important; }
