@@ -98,6 +98,17 @@ export default function App() {
     document.documentElement.lang = lang
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Refresh profile from server on mount (picks up admin changes to display_name/company_name)
+  useEffect(() => {
+    if (!token) return
+    authApi.getMe().then(res => {
+      const p = { displayName: res.display_name, companyName: res.company_name, logoUrl: res.logo_url }
+      setProfile(p)
+      localStorage.setItem('acct_profile', JSON.stringify(p))
+      if (res.language === 'ar' || res.language === 'en') setLang(res.language)
+    }).catch(() => { /* silently ignore — stale cache is fine as fallback */ })
+  }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleLogin = (res: { display_name: string | null; company_name: string | null; logo_url: string | null; language?: string | null }) => {
     setTokenState(getToken())
     const p = { displayName: res.display_name, companyName: res.company_name, logoUrl: res.logo_url }

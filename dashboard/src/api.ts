@@ -104,6 +104,9 @@ export const authApi = {
       if (!res.ok) throw new Error('Invalid credentials')
       return res.json()
     }),
+
+  getMe: (): Promise<{ display_name: string | null; company_name: string | null; logo_url: string | null; language: string | null }> =>
+    fetch('/api/auth/me', { headers: authHeaders() }).then(r => handleResponse(r)),
 }
 
 export const api = {
