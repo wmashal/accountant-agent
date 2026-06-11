@@ -738,17 +738,16 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                       ))}
                     </select>
                   </label>
+                  {/* Export button — inside dropdown-filters row, pushed right */}
+                  <button
+                    className="btn-export"
+                    onClick={() => exportCsv(filteredForExport)}
+                    disabled={filteredForExport.length === 0}
+                  >
+                    ↓ {t.exportCsv}
+                  </button>
                 </div>
               </div>
-
-              {/* Export button */}
-              <button
-                className="btn-export"
-                onClick={() => exportCsv(filteredForExport)}
-                disabled={filteredForExport.length === 0}
-              >
-                ↓ {t.exportCsv}
-              </button>
 
               {/* Invoices grouped by selected month dimension */}
               {(() => {
