@@ -107,10 +107,12 @@ export default function AccountantDetailPage({ accountantId, onBack }: Props) {
   if (loading) return <div style={{ padding: 40, color: '#6b7280' }}>Loading…</div>
   if (!acct) return <div style={{ padding: 40, color: '#ef4444' }}>Accountant not found</div>
 
-  const chartData = (analytics?.monthly ?? []).map(m => ({
-    ...m,
-    label: m.month.slice(5),
-  }))
+  const chartData = (analytics?.monthly ?? []).map(m => {
+    const [y, mo] = m.month.split('-')
+    const label = new Date(Number(y), Number(mo) - 1, 1)
+      .toLocaleString('default', { month: 'short', year: '2-digit' })
+    return { ...m, label }
+  })
 
   const hasAnyData = chartData.some(m => m.receipts > 0)
 
