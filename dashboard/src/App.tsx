@@ -457,7 +457,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
           {profile.logoUrl && (
             <img src={profile.logoUrl} alt="logo" style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover', marginBottom: '0.5rem' }} />
           )}
-          <h1>{profile.companyName || profile.displayName || 'Accountant'}</h1>
+          <h1>{profile.displayName || profile.companyName || 'Accountant'}</h1>
           <p className="subtitle">{t.invoiceDashboard}</p>
           <button onClick={onLogout} style={{ marginTop: "0.5rem", padding: "0.3rem 0.8rem", fontSize: "0.8rem", background: "transparent", border: "1px solid #ccc", borderRadius: "4px", cursor: "pointer", color: "#666" }}>
             {t.logout}
