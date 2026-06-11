@@ -42,26 +42,23 @@ The system is built and operational. The phases below track what was built (✅)
 | # | Task | Status |
 |---|---|---|
 | 3.1 | PDFs sent directly to Gemini Vision (application/pdf mime) | ✅ |
-| 3.2 | `ocr.py` — LlamaParse stub present but bypassed (consistently times out on free tier) | ✅ |
-| 3.3 | Gemini retries 3x with backoff on 5xx errors | ✅ |
-| 3.4 | Multi-page PDF splitting via pypdf (`PdfReader` + `PdfWriter` per page) | ✅ |
-| 3.5 | `extraction_model` field stored in Postgres | ✅ |
-| 3.6 | Tested with Hebrew PDF invoices | ✅ |
+| 3.2 | Gemini retries 3x with backoff on 5xx errors | ✅ |
+| 3.3 | Multi-page PDF splitting via pypdf (`PdfReader` + `PdfWriter` per page) | ✅ |
+| 3.4 | `extraction_model` field stored in Postgres | ✅ |
+| 3.5 | Tested with Hebrew PDF invoices | ✅ |
 
 ---
 
-## Phase 4 — Claude Fallback + Storage + Confirmation ✅ Complete
+## Phase 4 — Storage + Confirmation ✅ Complete
 
 | # | Task | Status |
 |---|---|---|
 | 4.1 | `is_valid()` check on LLM output (vendor + cost required) | ✅ |
-| 4.2 | `app/services/claude_client.py` — Anthropic API fallback (images only) | ✅ |
-| 4.3 | Fallback: invalid Gemini output → Claude retry for images | ✅ |
-| 4.4 | Local disk file storage (`app/services/local_storage.py`) | ✅ |
-| 4.5 | File URL stored in Postgres `receipts.file_url` | ✅ |
-| 4.6 | Confirmation via Redis `pending:<from>` → JSON list of SIDs | ✅ |
-| 4.7 | Handle `confirm` / `reject` — bulk-update all pending SIDs | ✅ |
-| 4.8 | Auto-confirm after 5 minutes if user doesn't reply | ✅ |
+| 4.2 | Local disk file storage (`app/services/local_storage.py`) | ✅ |
+| 4.3 | File URL stored in Postgres `receipts.file_url` | ✅ |
+| 4.4 | Confirmation via Redis `pending:<from>` → JSON list of SIDs | ✅ |
+| 4.5 | Handle `confirm` / `reject` — bulk-update all pending SIDs | ✅ |
+| 4.6 | Auto-confirm after 5 minutes if user doesn't reply | ✅ |
 | 4.9 | Full round-trip tested | ✅ |
 
 ---
@@ -175,8 +172,6 @@ See [`deploy-gcp.md`](deploy-gcp.md) for full setup instructions.
 |---|---|---|
 | Twilio | Account SID, Auth Token, WhatsApp number | console.twilio.com |
 | Gemini | API key | aistudio.google.com |
-| Anthropic | API key (Claude Sonnet fallback) | console.anthropic.com |
-| LlamaParse | API key (present in config, pipeline bypasses it) | cloud.llamaindex.ai |
 | Google Cloud | Project, service account with Cloud Run + SQL + Redis + GCS roles | console.cloud.google.com |
 
 ---

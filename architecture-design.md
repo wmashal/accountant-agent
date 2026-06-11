@@ -143,7 +143,6 @@ sequenceDiagram
     participant R as Redis
     participant B as BackgroundTask
     participant G as Gemini 2.5 Flash
-    participant C as Claude Sonnet (fallback)
     participant D as Local Disk
     participant P as Postgres
 
@@ -163,10 +162,7 @@ sequenceDiagram
     else ContentType = image/*
         B->>G: Send image bytes (vision)
         G-->>B: JSON extraction result
-        alt Gemini fails all retries
-            B->>C: Claude Sonnet fallback (images only)
-            C-->>B: JSON extraction result
-        end
+        note over B,G: Gemini retries up to 3x with backoff on 5xx errors
     end
 
     B->>B: Normalize data (date, ABN, GST, currency, language)
@@ -258,14 +254,10 @@ flowchart LR
 
     D -->|retry 3x on 5xx| D
     E -->|retry 3x on 5xx| E
-    E -->|all retries failed| F[Claude Sonnet fallback\nimages only]
 
     D --> G[Normalization]
     E --> G
-    F --> G
 ```
-
-> **Note:** LlamaParse is present in `ocr.py` but is not used in the active pipeline — it consistently times out on the free tier. PDFs go directly to Gemini Vision which natively supports `application/pdf` as an inline data mime type.
 
 ---
 
@@ -302,7 +294,7 @@ flowchart LR
 | `date` | String nullable | YYYY-MM-DD |
 | `abn` | String nullable | 11-digit ABN, validated |
 | `receipt_language` | String nullable | BCP 47 (e.g. `en`, `he`, `ar`) |
-| `extraction_model` | String nullable | `gemini-2.5-flash` or `claude-sonnet-4-5` |
+| `extraction_model` | String nullable | `gemini-2.5-flash` |
 | `transaction_type` | String | `income` or `expense` — default `expense` |
 | `status` | String | `processing`, `pending_confirmation`, `confirmed`, `rejected`, `error` |
 | `file_url` | String nullable | `/files/{phone}/{YYYY-MM}/{sid}.ext` |
@@ -394,12 +386,10 @@ Gemini detects the language, returns a BCP 47 code, and normalizes all values to
 | Failure | Behaviour |
 |---|---|
 | Gemini 5xx / rate limit | Retry up to 3x with 3s, 6s backoff |
-| Gemini JSON invalid | Skip to Claude fallback (images only) |
-| Claude also fails | `status = error`, send error WhatsApp message |
+| Gemini JSON invalid / all retries fail | `status = error`, send error WhatsApp message |
 | File save fails | Non-fatal — `file_url` stored as `None`, processing continues |
 | Postgres write fails | Error logged, user receives error WhatsApp message |
 | User never confirms | Auto-confirm after 5 minutes; `pending:{from}` Redis key also expires after 30min |
-| LlamaParse timeout | Not used in active pipeline; code present but bypassed |
 
 ---
 

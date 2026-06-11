@@ -274,8 +274,6 @@ create_secret TWILIO_ACCOUNT_SID      "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 create_secret TWILIO_AUTH_TOKEN       "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 create_secret TWILIO_FROM_NUMBER      "+1415xxxxxxx"
 create_secret GEMINI_API_KEY          "AIzaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-create_secret ANTHROPIC_API_KEY       "sk-ant-xxxxxxxxxxxxxxxxxxxx"
-create_secret LLAMA_CLOUD_API_KEY     "llx-xxxxxxxxxxxxxxxxxxxx"
 create_secret DATABASE_URL            "postgresql+asyncpg://accountant:CHANGE_THIS_PASSWORD@/accountant?host=/cloudsql/accountant-agent-498810:us-central1:accountant-db"
 create_secret REDIS_URL               "rediss://<redis-service-url-without-https>:443/0"
 create_secret GCS_BUCKET_NAME         "accountant-receipts-${PROJECT_ID}"
@@ -328,7 +326,7 @@ gcloud run deploy accountant-api \
   --cpu=1 \
   --timeout=300 \
   --add-cloudsql-instances=accountant-agent-498810:us-central1:accountant-db \
-  --set-secrets=TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_FROM_NUMBER=TWILIO_FROM_NUMBER:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,LLAMA_CLOUD_API_KEY=LLAMA_CLOUD_API_KEY:latest,DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,GCS_BUCKET_NAME=GCS_BUCKET_NAME:latest,GOOGLE_DRIVE_FOLDER_ID=GOOGLE_DRIVE_FOLDER_ID:latest,/secrets/credentials.json=GOOGLE_CREDENTIALS_JSON:latest \
+  --set-secrets=TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_FROM_NUMBER=TWILIO_FROM_NUMBER:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,GCS_BUCKET_NAME=GCS_BUCKET_NAME:latest,GOOGLE_DRIVE_FOLDER_ID=GOOGLE_DRIVE_FOLDER_ID:latest,/secrets/credentials.json=GOOGLE_CREDENTIALS_JSON:latest \
   --set-env-vars=ENVIRONMENT=production,GOOGLE_SERVICE_ACCOUNT_FILE=/secrets/credentials.json,DRIVE_POLL_INTERVAL_SECONDS=300
 
 # Save the API URL
@@ -511,8 +509,6 @@ gcloud run deploy accountant-dashboard --image=${REGISTRY}/dashboard:latest --re
 | `TWILIO_AUTH_TOKEN` | Secret Manager | |
 | `TWILIO_FROM_NUMBER` | Secret Manager | |
 | `GEMINI_API_KEY` | Secret Manager | |
-| `ANTHROPIC_API_KEY` | Secret Manager | |
-| `LLAMA_CLOUD_API_KEY` | Secret Manager | Present but pipeline bypasses it |
 | `DATABASE_URL` | Secret Manager | `postgresql+asyncpg://user:pass@/db?host=/cloudsql/<connection-name>` |
 | `REDIS_URL` | Secret Manager | `rediss://<cloud-run-url>:443/0` |
 | `GCS_BUCKET_NAME` | Secret Manager | Triggers GCS upload instead of local disk |
@@ -654,8 +650,6 @@ gcloud secrets delete TWILIO_ACCOUNT_SID --quiet
 gcloud secrets delete TWILIO_AUTH_TOKEN --quiet
 gcloud secrets delete TWILIO_FROM_NUMBER --quiet
 gcloud secrets delete GEMINI_API_KEY --quiet
-gcloud secrets delete ANTHROPIC_API_KEY --quiet
-gcloud secrets delete LLAMA_CLOUD_API_KEY --quiet
 gcloud secrets delete DATABASE_URL --quiet
 gcloud secrets delete REDIS_URL --quiet
 gcloud secrets delete GCS_BUCKET_NAME --quiet

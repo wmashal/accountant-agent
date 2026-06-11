@@ -61,8 +61,7 @@ Services:
 | WhatsApp routing | `To` field → `twilio_from_number` lookup | Each accountant has their own Twilio number |
 | Drive polling | Per-accountant asyncio loop | No webhooks; Drive API polling sufficient |
 | Multi-page PDF | `asyncio.gather()` concurrent extraction + invoice grouping | ~5-6× faster than sequential; reuses prefetched result for single-page groups |
-| Primary LLM | Gemini 2.5 Flash | Price/performance for vision + structured output |
-| Fallback LLM | Claude Sonnet 4.5 | Triggered on parse failure only |
+| Primary LLM | Gemini 2.5 Flash | Price/performance for vision + structured output; handles PDFs and images natively |
 | File storage | GCS (production), local disk (dev) | Cloud Run is stateless |
 | Dashboard | React + Vite + TypeScript + nginx | Served as static SPA; nginx proxies `/api/` to backend |
 
