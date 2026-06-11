@@ -166,6 +166,128 @@ See [`deploy-gcp.md`](deploy-gcp.md) for full setup instructions.
 
 ---
 
+## Phase 11 — Multi-Tenant Admin Panel ✅ Complete
+
+| # | Task | Status |
+|---|---|---|
+| 11.1 | `accountants` table: username, password_hash, display_name, company_name, logo_url, email, twilio_from_number, gemini_api_key, default_currency, is_active | ✅ |
+| 11.2 | JWT auth: accountant login + admin login (separate credentials) | ✅ |
+| 11.3 | Admin panel (React + Vite) — list, create, edit, deactivate accountants | ✅ |
+| 11.4 | Per-accountant Twilio number, Gemini key, Drive folder, currency | ✅ |
+| 11.5 | All customers and receipts scoped to `accountant_id` | ✅ |
+| 11.6 | Logo upload per accountant (stored in GCS) | ✅ |
+| 11.7 | Admin panel deployed as separate Cloud Run service | ✅ |
+
+---
+
+## Phase 12 — Dashboard UX Improvements ✅ Complete
+
+| # | Task | Status |
+|---|---|---|
+| 12.1 | Resizable table columns (drag handle on each header) | ✅ |
+| 12.2 | SVG icons replacing Unicode characters for cross-browser reliability | ✅ |
+| 12.3 | Sticky actions column (always visible when scrolling horizontally) | ✅ |
+| 12.4 | Eye/view icon moved into actions cell alongside move/edit/delete | ✅ |
+| 12.5 | Group By filter: upload month or invoice month | ✅ |
+| 12.6 | Upload Date column in table | ✅ |
+| 12.7 | Receipt number column in table | ✅ |
+| 12.8 | Refresh button on customer header | ✅ |
+
+---
+
+## Phase 13 — Arabic / English i18n + RTL ✅ Complete
+
+| # | Task | Status |
+|---|---|---|
+| 13.1 | `default_language` column on `accountants` table (VARCHAR 10, default `en`) | ✅ |
+| 13.2 | `language` field returned in login response | ✅ |
+| 13.3 | Admin panel: language select (English / Arabic) on create + edit accountant | ✅ |
+| 13.4 | `dashboard/src/i18n/en.ts` — ~130 English translation keys | ✅ |
+| 13.5 | `dashboard/src/i18n/ar.ts` — full Arabic translation | ✅ |
+| 13.6 | `LangContext` + `useLang` hook — no external i18n library | ✅ |
+| 13.7 | Lang persisted in `localStorage`; initialized from login response | ✅ |
+| 13.8 | `document.documentElement.dir = 'rtl'` on Arabic switch | ✅ |
+| 13.9 | RTL CSS overrides (`[dir="rtl"]`) for sidebar, table, actions column | ✅ |
+| 13.10 | EN / عربي language switcher in sidebar footer | ✅ |
+
+---
+
+## Phase 14 — Export CSV + Profile Refresh ✅ Complete
+
+| # | Task | Status |
+|---|---|---|
+| 14.1 | Export CSV button in filter bar — exports filtered receipts as flat CSV | ✅ |
+| 14.2 | CSV respects all active filters (type, invoice month, upload month, supplier) | ✅ |
+| 14.3 | `GET /api/auth/me` endpoint — returns fresh accountant profile from DB | ✅ |
+| 14.4 | Dashboard fetches `/me` on mount — picks up admin name changes without re-login | ✅ |
+| 14.5 | Sidebar shows `displayName` before `companyName` (priority fix) | ✅ |
+
+---
+
+## Database Schema
+
+See [`deploy-gcp.md` — DB Schema & All Migrations](deploy-gcp.md#db-schema--all-migrations) for the full schema and all SQL statements.
+
+### `accountants`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | PK int | |
+| `username` | VARCHAR(100) | unique, indexed |
+| `password_hash` | VARCHAR(255) | bcrypt |
+| `display_name` | VARCHAR(200) | nullable |
+| `company_name` | VARCHAR(200) | nullable |
+| `logo_url` | VARCHAR(500) | nullable, GCS URL |
+| `email` | VARCHAR(200) | nullable |
+| `google_drive_root_folder_id` | VARCHAR(200) | nullable |
+| `twilio_from_number` | VARCHAR(50) | nullable, indexed |
+| `gemini_api_key` | VARCHAR(200) | nullable |
+| `default_currency` | VARCHAR(10) | default `USD` |
+| `default_language` | VARCHAR(10) | default `en` |
+| `is_active` | BOOLEAN | default `true` |
+| `created_at` | TIMESTAMPTZ | |
+
+### `customers`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | PK int | |
+| `phone_number` | VARCHAR(50) | indexed; Drive customers use `drive_{uuid}` |
+| `display_name` | VARCHAR(200) | nullable |
+| `company_name` | VARCHAR(200) | nullable |
+| `company_id` | VARCHAR(100) | nullable (tax ID) |
+| `drive_folder_id` | VARCHAR(200) | nullable |
+| `source` | VARCHAR(20) | `whatsapp` or `drive` |
+| `default_currency` | VARCHAR(10) | default `USD` |
+| `accountant_id` | FK → accountants | indexed |
+| `created_at` | TIMESTAMPTZ | |
+| **UNIQUE** | `(phone_number, accountant_id)` | |
+
+### `receipts`
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | PK int | |
+| `message_sid` | VARCHAR(100) | unique, indexed |
+| `customer_id` | FK → customers | indexed |
+| `phone_number` | VARCHAR(50) | indexed |
+| `vendor` | VARCHAR(300) | nullable |
+| `cost` | FLOAT | nullable |
+| `tax` | FLOAT | nullable |
+| `tax_rate` | FLOAT | nullable (e.g. 0.17) |
+| `currency` | VARCHAR(10) | default `AUD` |
+| `date` | VARCHAR(20) | nullable, as printed on invoice |
+| `receipt_number` | VARCHAR(100) | nullable |
+| `receipt_language` | VARCHAR(20) | BCP-47 code, default `unknown` |
+| `extraction_model` | VARCHAR(50) | Gemini model used |
+| `upload_date` | TIMESTAMPTZ | nullable |
+| `transaction_type` | VARCHAR(20) | `income` or `expense` |
+| `status` | VARCHAR(30) | `processing` / `pending_confirmation` / `confirmed` / `rejected` / `error` |
+| `file_url` | VARCHAR(500) | nullable, GCS URL |
+| `drive_file_id` | VARCHAR(200) | nullable, indexed |
+| `accountant_id` | FK → accountants | indexed |
+| `created_at` | TIMESTAMPTZ | |
+| `updated_at` | TIMESTAMPTZ | auto-updated on change |
+
+---
+
 ## Required Credentials
 
 | Service | What You Need | Where |
@@ -181,4 +303,3 @@ See [`deploy-gcp.md`](deploy-gcp.md) for full setup instructions.
 | # | Item | Priority |
 |---|---|---|
 | OI-1 | Twilio interactive button template for confirm/reject (requires WhatsApp Business approval) | Medium |
-| OI-2 | Export receipts to CSV / Excel from dashboard | Low |

@@ -423,6 +423,124 @@ gcloud run services describe accountant-dashboard \
 
 ---
 
+## DB Schema & All Migrations
+
+This section documents the full current schema and every ALTER statement ever applied to the Cloud SQL database. Run these on a **fresh** database after the first deploy, or apply only the missing ones on an existing database.
+
+### Connect to Cloud SQL
+
+```bash
+gcloud sql connect accountant-db --user=accountant --database=accountant
+```
+
+---
+
+### Full Schema (for reference)
+
+```sql
+-- accountants table (created by SQLAlchemy create_all on first startup)
+CREATE TABLE accountants (
+    id                        SERIAL PRIMARY KEY,
+    username                  VARCHAR(100) NOT NULL UNIQUE,
+    password_hash             VARCHAR(255) NOT NULL,
+    display_name              VARCHAR(200),
+    company_name              VARCHAR(200),
+    logo_url                  VARCHAR(500),
+    email                     VARCHAR(200),
+    google_drive_root_folder_id VARCHAR(200),
+    twilio_from_number        VARCHAR(50),
+    gemini_api_key            VARCHAR(200),
+    default_currency          VARCHAR(10) NOT NULL DEFAULT 'USD',
+    default_language          VARCHAR(10) NOT NULL DEFAULT 'en',
+    is_active                 BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX ix_accountants_username ON accountants (username);
+CREATE INDEX ix_accountants_twilio_from_number ON accountants (twilio_from_number);
+
+-- customers table (created by SQLAlchemy create_all on first startup)
+CREATE TABLE customers (
+    id               SERIAL PRIMARY KEY,
+    phone_number     VARCHAR(50) NOT NULL,
+    display_name     VARCHAR(200),
+    company_name     VARCHAR(200),
+    company_id       VARCHAR(100),
+    drive_folder_id  VARCHAR(200),
+    source           VARCHAR(20) NOT NULL DEFAULT 'whatsapp',
+    default_currency VARCHAR(10) NOT NULL DEFAULT 'USD',
+    accountant_id    INTEGER NOT NULL REFERENCES accountants(id),
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_customer_phone_accountant UNIQUE (phone_number, accountant_id)
+);
+CREATE INDEX ix_customers_phone_number ON customers (phone_number);
+CREATE INDEX ix_customers_accountant_id ON customers (accountant_id);
+
+-- receipts table (created by SQLAlchemy create_all on first startup)
+CREATE TABLE receipts (
+    id               SERIAL PRIMARY KEY,
+    message_sid      VARCHAR(100) NOT NULL UNIQUE,
+    customer_id      INTEGER NOT NULL REFERENCES customers(id),
+    phone_number     VARCHAR(50) NOT NULL,
+    vendor           VARCHAR(300),
+    cost             FLOAT,
+    tax              FLOAT,
+    tax_rate         FLOAT,
+    currency         VARCHAR(10) NOT NULL DEFAULT 'AUD',
+    date             VARCHAR(20),
+    receipt_number   VARCHAR(100),
+    receipt_language VARCHAR(20) NOT NULL DEFAULT 'unknown',
+    extraction_model VARCHAR(50) NOT NULL DEFAULT '',
+    upload_date      TIMESTAMPTZ,
+    transaction_type VARCHAR(20) NOT NULL DEFAULT 'expense',
+    status           VARCHAR(30) NOT NULL DEFAULT 'processing',
+    file_url         VARCHAR(500),
+    drive_file_id    VARCHAR(200),
+    accountant_id    INTEGER NOT NULL REFERENCES accountants(id),
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX ix_receipts_message_sid ON receipts (message_sid);
+CREATE INDEX ix_receipts_customer_id ON receipts (customer_id);
+CREATE INDEX ix_receipts_phone_number ON receipts (phone_number);
+CREATE INDEX ix_receipts_drive_file_id ON receipts (drive_file_id);
+CREATE INDEX ix_receipts_accountant_id ON receipts (accountant_id);
+```
+
+---
+
+### Migration History (apply to existing databases)
+
+Run only the statements for columns that don't exist yet. All use `IF NOT EXISTS` / `IF EXISTS` so they are safe to re-run.
+
+```sql
+-- Phase 7: Google Drive support
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS company_name VARCHAR(200);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS company_id VARCHAR(100);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS drive_folder_id VARCHAR(200);
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS source VARCHAR(20) DEFAULT 'whatsapp';
+ALTER TABLE receipts  ADD COLUMN IF NOT EXISTS drive_file_id VARCHAR(200);
+
+-- Phase 9: Receipt number + upload date + tax rate
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS receipt_number VARCHAR(100);
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS upload_date TIMESTAMPTZ;
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS tax_rate FLOAT;
+
+-- Phase 9: Default currency per customer
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS default_currency VARCHAR(10) NOT NULL DEFAULT 'USD';
+
+-- Phase 11: Multi-tenant accountants table fields
+ALTER TABLE accountants ADD COLUMN IF NOT EXISTS google_drive_root_folder_id VARCHAR(200);
+ALTER TABLE accountants ADD COLUMN IF NOT EXISTS twilio_from_number VARCHAR(50);
+ALTER TABLE accountants ADD COLUMN IF NOT EXISTS gemini_api_key VARCHAR(200);
+ALTER TABLE accountants ADD COLUMN IF NOT EXISTS default_currency VARCHAR(10) NOT NULL DEFAULT 'USD';
+ALTER TABLE accountants ADD COLUMN IF NOT EXISTS logo_url VARCHAR(500);
+
+-- Phase 13: Language support
+ALTER TABLE accountants ADD COLUMN IF NOT EXISTS default_language VARCHAR(10) NOT NULL DEFAULT 'en';
+```
+
+---
+
 ## Step 12 — Run DB Migration
 
 ```bash
