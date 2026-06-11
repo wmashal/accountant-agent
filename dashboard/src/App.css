@@ -95,10 +95,18 @@
 .file-link-btn:hover { text-decoration: underline; color: #4f46e5; }
 
 /* Actions column */
-.action-cell { white-space: nowrap; }
-.action-cell { display: flex; gap: 6px; align-items: center; }
+.action-cell { white-space: nowrap; display: flex; gap: 4px; align-items: center; }
 .btn-edit { background: #f3f4f6; border: 1px solid #d1d5db; color: #374151; padding: 5px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; line-height: 1; }
 .btn-edit:hover { background: #e5e7eb; }
+
+/* Icon-only action buttons */
+.btn-icon { width: 30px; height: 30px; border-radius: 6px; border: 1px solid; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s; padding: 0; line-height: 1; }
+.btn-icon-move { background: #f0f9ff; color: #0369a1; border-color: #bae6fd; }
+.btn-icon-move:hover { background: #e0f2fe; border-color: #7dd3fc; }
+.btn-icon-edit { background: #f3f4f6; color: #374151; border-color: #d1d5db; }
+.btn-icon-edit:hover { background: #e5e7eb; border-color: #9ca3af; }
+.btn-icon-delete { background: #fff0f0; color: #dc2626; border-color: #fca5a5; }
+.btn-icon-delete:hover { background: #fee2e2; border-color: #ef4444; }
 
 /* Inline edit row */
 .edit-row td { background: #f0f4ff !important; }
@@ -172,15 +180,9 @@
 .month-group .receipts-table thead th { background: #f8fafc; }
 .no-data { padding: 32px; text-align: center; color: #9ca3af; font-size: 14px; }
 
-/* Move and Delete buttons */
-.btn-move { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; border-radius: 6px; padding: 5px 10px; font-size: 13px; cursor: pointer; white-space: nowrap; line-height: 1; }
-.btn-move:hover { background: #e0f2fe; border-color: #7dd3fc; }
+/* Move and Delete buttons — kept for edit row save/cancel */
 .btn-refresh { background: #f3f4f6; border: 1px solid #d1d5db; color: #374151; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; align-self: center; margin-left: auto; }
 .btn-refresh:hover { background: #e5e7eb; }
-
-/* Delete button */
-.btn-delete { background: #fff0f0; color: #dc2626; border: 1px solid #fca5a5; border-radius: 6px; padding: 5px 10px; font-size: 13px; cursor: pointer; white-space: nowrap; line-height: 1; }
-.btn-delete:hover { background: #fee2e2; border-color: #ef4444; }
 
 /* Filter bar */
 .filter-bar { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; }

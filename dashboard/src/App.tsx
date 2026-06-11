@@ -764,11 +764,9 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                     ) : "—"}
                                   </td>
                                   <td className="action-cell">
-                                    <button className="btn-move" onClick={() => toggleType(r)} title={`Move to ${r.transaction_type === 'income' ? 'Expense' : 'Income'}`}>
-                                      {r.transaction_type === "income" ? "⇄ Expense" : "⇄ Income"}
-                                    </button>
-                                    <button className="btn-edit" onClick={() => startEdit(r)} title="Edit">✎ Edit</button>
-                                    <button className="btn-delete" onClick={() => deleteReceipt(r)} title="Delete">✕</button>
+                                    <button className="btn-icon btn-icon-move" onClick={() => toggleType(r)} title={`Move to ${r.transaction_type === 'income' ? 'Expense' : 'Income'}`}>⇄</button>
+                                    <button className="btn-icon btn-icon-edit" onClick={() => startEdit(r)} title="Edit">✎</button>
+                                    <button className="btn-icon btn-icon-delete" onClick={() => deleteReceipt(r)} title="Delete">✕</button>
                                   </td>
                                 </tr>
                               )
