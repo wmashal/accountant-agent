@@ -67,18 +67,26 @@ export const ar: Translations = {
   filterAllMonths: 'كل الشهور',
   filterStatus: 'الحالة',
   filterAllStatuses: 'كل الحالات',
+  groupBy: 'تجميع حسب',
+  groupByUpload: 'شهر الرفع',
+  groupByInvoice: 'شهر الفاتورة',
 
   // Table headers
   colDate: 'التاريخ',
+  colUploadDate: 'تاريخ الرفع',
   colReceiptNo: 'رقم الفاتورة',
   colSupplier: 'المورد / الدافع',
   colAmount: 'المبلغ',
   colTax: 'الضريبة',
   colType: 'النوع',
   colStatus: 'الحالة',
-  colFile: 'ملف',
+  colFile: '',
   colSource: 'مصدر',
-  colActions: 'إجراءات',
+  colActions: '',
+
+  // Month group dim badges
+  dimUpload: 'رفع',
+  dimInvoiceDate: 'تاريخ الفاتورة',
 
   // Type labels
   typeIncome: 'دخل',

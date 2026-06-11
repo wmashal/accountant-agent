@@ -642,19 +642,19 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                 {/* Dropdown filters */}
                 <div className="dropdown-filters">
                   <label className="filter-label">
-                    Group by
+                    {t.groupBy}
                     <select
                       className="filter-select"
                       value={groupBy}
                       onChange={e => setGroupBy(e.target.value as "invoice" | "upload")}
                     >
-                      <option value="upload">Upload Month</option>
-                      <option value="invoice">Invoice Month</option>
+                      <option value="upload">{t.groupByUpload}</option>
+                      <option value="invoice">{t.groupByInvoice}</option>
                     </select>
                   </label>
 
                   <label className="filter-label">
-                    {t.filterMonth} (Invoice)
+                    {t.colDate} (Invoice)
                     <select
                       className="filter-select"
                       value={invoiceMonthFilter}
@@ -668,7 +668,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                   </label>
 
                   <label className="filter-label">
-                    {t.filterMonth} (Upload)
+                    {t.colUploadDate}
                     <select
                       className="filter-select"
                       value={uploadMonthFilter}
@@ -757,7 +757,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                         <span className="month-toggle">{collapsed ? "▶" : "▼"}</span>
                         <span className="month-label">
                           {formatMonth(month, lang)}
-                          {groupBy === "upload" ? <span className="month-dim-badge"> upload</span> : <span className="month-dim-badge"> invoice date</span>}
+                          {groupBy === "upload" ? <span className="month-dim-badge">{t.dimUpload}</span> : <span className="month-dim-badge">{t.dimInvoiceDate}</span>}
                         </span>
                         <span className="month-stats">
                           <span className="month-count">{t.invoicesCount(monthReceipts.length)}</span>
@@ -774,9 +774,9 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                           </colgroup>
                           <thead>
                             <tr>
-                              {[t.colDate, t.colDate + " (↑)", t.colReceiptNo, t.colSupplier, t.colAmount, t.colTax, t.colType, t.colStatus, t.colFile].map((label, i) => (
+                              {[t.colDate, t.colUploadDate, t.colReceiptNo, t.colSupplier, t.colAmount, t.colTax, t.colType, t.colStatus, t.colFile].map((label, i) => (
                                 <th key={i} style={{ width: colWidths[i] }}>
-                                  {i === 1 ? "Upload Date" : label}
+                                  {label}
                                   <span className="col-resize-handle" onMouseDown={e => onColResizeMouseDown(i, e)} />
                                 </th>
                               ))}

@@ -65,18 +65,26 @@ export const en = {
   filterAllMonths: 'All Months',
   filterStatus: 'Status',
   filterAllStatuses: 'All Statuses',
+  groupBy: 'Group By',
+  groupByUpload: 'Upload Month',
+  groupByInvoice: 'Invoice Month',
 
   // Table headers
   colDate: 'Date',
+  colUploadDate: 'Upload Date',
   colReceiptNo: 'Receipt #',
   colSupplier: 'Supplier / Payer',
   colAmount: 'Amount',
   colTax: 'Tax',
   colType: 'Type',
   colStatus: 'Status',
-  colFile: 'File',
+  colFile: '',
   colSource: 'Src',
-  colActions: 'Actions',
+  colActions: '',
+
+  // Month group dim badges
+  dimUpload: 'upload',
+  dimInvoiceDate: 'invoice date',
 
   // Type labels
   typeIncome: 'Income',
