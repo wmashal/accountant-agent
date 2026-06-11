@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { api, authApi, getToken, setToken, clearToken, CustomerSummary, Receipt, CreateCustomerData } from "./api"
 import "./App.css"
 
@@ -87,6 +87,36 @@ export default function App() {
   return <Dashboard onLogout={handleLogout} profile={profile} />
 }
 
+// Column resize hook — only first 9 cols are resizable; last col (Actions) is sticky/fixed
+const DEFAULT_COL_WIDTHS = [105, 105, 90, 180, 115, 130, 100, 100, 46]
+const ACTIONS_COL_WIDTH = 130
+
+function useColResize(initial: number[]) {
+  const [widths, setWidths] = useState(initial)
+  const dragging = useRef<{ idx: number; startX: number; startW: number } | null>(null)
+
+  const onMouseDown = useCallback((idx: number, e: React.MouseEvent) => {
+    e.preventDefault()
+    dragging.current = { idx, startX: e.clientX, startW: widths[idx] }
+
+    const onMove = (me: MouseEvent) => {
+      if (!dragging.current) return
+      const delta = me.clientX - dragging.current.startX
+      const newW = Math.max(50, dragging.current.startW + delta)
+      setWidths(prev => prev.map((w, i) => i === dragging.current!.idx ? newW : w))
+    }
+    const onUp = () => {
+      dragging.current = null
+      window.removeEventListener("mousemove", onMove)
+      window.removeEventListener("mouseup", onUp)
+    }
+    window.addEventListener("mousemove", onMove)
+    window.addEventListener("mouseup", onUp)
+  }, [widths])
+
+  return { widths, onMouseDown }
+}
+
 function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { displayName: string | null; companyName: string | null; logoUrl: string | null } }) {
   const [customers, setCustomers] = useState<CustomerSummary[]>([])
   const [selected, setSelected] = useState<CustomerSummary | null>(null)
@@ -115,6 +145,9 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
   // File preview modal
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewIsPdf, setPreviewIsPdf] = useState(false)
+
+  // Column resizing
+  const { widths: colWidths, onMouseDown: onColResizeMouseDown } = useColResize(DEFAULT_COL_WIDTHS)
 
   // Add Customer modal
   const [showAddCustomer, setShowAddCustomer] = useState(false)
@@ -672,20 +705,20 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                       </div>
 
                       {!collapsed && (
-                        <table className="receipts-table">
+                        <table className="receipts-table" style={{ minWidth: colWidths.reduce((a, b) => a + b, 0) + ACTIONS_COL_WIDTH, width: '100%' }}>
+                          <colgroup>
+                            {colWidths.map((w, i) => <col key={i} style={{ width: i === 3 ? 'auto' : w }} />)}
+                            <col style={{ width: ACTIONS_COL_WIDTH }} />
+                          </colgroup>
                           <thead>
                             <tr>
-                              <th>Invoice Date</th>
-                              <th>Upload Date</th>
-                              <th>Invoice #</th>
-                              <th>Supplier</th>
-                              <th>Amount</th>
-                              <th>Tax Rate</th>
-                              <th>Tax</th>
-                              <th>Type</th>
-                              <th>Status</th>
-                              <th>File</th>
-                              <th>Actions</th>
+                              {["Invoice Date","Upload Date","Invoice #","Supplier","Amount","Tax","Type","Status","File"].map((label, i) => (
+                                <th key={i} style={{ width: colWidths[i] }}>
+                                  {label}
+                                  <span className="col-resize-handle" onMouseDown={e => onColResizeMouseDown(i, e)} />
+                                </th>
+                              ))}
+                              <th className="actions-th">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -701,13 +734,13 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                     <input className="edit-input edit-input-xs" value={editForm.currency || ""} onChange={e => setEditForm(p => ({ ...p, currency: e.target.value }))} placeholder="CCY" maxLength={3} />
                                   </td>
                                   <td>
-                                    <select className="edit-select" value={editForm.tax_rate != null ? String(editForm.tax_rate) : ""} onChange={e => setEditForm(p => ({ ...p, tax_rate: e.target.value ? parseFloat(e.target.value) : undefined }))}>
-                                      <option value="">—</option>
+                                    <select className="edit-select edit-select-xs" value={editForm.tax_rate != null ? String(editForm.tax_rate) : ""} onChange={e => setEditForm(p => ({ ...p, tax_rate: e.target.value ? parseFloat(e.target.value) : undefined }))}>
+                                      <option value="">—%</option>
                                       <option value="0.17">17%</option>
                                       <option value="0.18">18%</option>
                                     </select>
+                                    <input className="edit-input edit-input-sm" type="number" value={editForm.tax ?? ""} onChange={e => setEditForm(p => ({ ...p, tax: parseFloat(e.target.value) || undefined }))} placeholder="Tax amt" style={{ marginTop: 3 }} />
                                   </td>
-                                  <td><input className="edit-input edit-input-sm" type="number" value={editForm.tax ?? ""} onChange={e => setEditForm(p => ({ ...p, tax: parseFloat(e.target.value) || undefined }))} placeholder="Tax" /></td>
                                   <td>
                                     <select className="edit-select" value={editForm.transaction_type} onChange={e => setEditForm(p => ({ ...p, transaction_type: e.target.value as "income" | "expense" }))}>
                                       <option value="income">Income</option>
@@ -724,12 +757,16 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                   </td>
                                   <td>
                                     {r.file_url ? (
-                                      <button className="file-link-btn" onClick={() => openPreview(r.file_url!)}>View</button>
+                                      <button className="btn-icon btn-icon-view" onClick={() => openPreview(r.file_url!)} title="View file">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                      </button>
                                     ) : r.drive_file_id ? (
-                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="file-link-btn">Drive</a>
-                                    ) : "—"}
+                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="btn-icon btn-icon-view" title="View in Drive" style={{ textDecoration: 'none' }}>
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                      </a>
+                                    ) : <span style={{ color: '#d1d5db' }}>—</span>}
                                   </td>
-                                  <td className="action-cell">
+                                  <td className="action-cell actions-td">
                                     <button className="btn-save btn-sm" onClick={() => saveEdit(r)}>Save</button>
                                     <button className="btn-cancel btn-sm" onClick={() => setEditingReceiptId(null)}>Cancel</button>
                                   </td>
@@ -741,8 +778,16 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                   <td>{r.receipt_number || "—"}</td>
                                   <td>{r.vendor || "—"}</td>
                                   <td className="amount">{r.cost != null ? `${r.currency} ${r.cost.toFixed(2)}` : "—"}</td>
-                                  <td>{formatTaxRate(r.tax_rate)}</td>
-                                  <td>{r.tax != null ? `${r.currency} ${r.tax.toFixed(2)}` : "—"}</td>
+                                  <td className="tax-cell">
+                                    {r.tax != null ? (
+                                      <span>
+                                        {r.tax_rate != null && <span className="tax-rate-chip">{formatTaxRate(r.tax_rate)}</span>}
+                                        {r.currency} {r.tax.toFixed(2)}
+                                      </span>
+                                    ) : r.tax_rate != null ? (
+                                      <span className="tax-rate-chip">{formatTaxRate(r.tax_rate)}</span>
+                                    ) : "—"}
+                                  </td>
                                   <td>
                                     <button className={`type-btn ${r.transaction_type}`} onClick={() => toggleType(r)} title="Click to toggle">
                                       {r.transaction_type === "income" ? "↑ Income" : "↓ Expense"}
@@ -751,17 +796,25 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                   <td><span className={`status-badge status-${r.status}`}>{r.status.replace(/_/g, " ")}</span></td>
                                   <td>
                                     {r.file_url ? (
-                                      <button className="file-link-btn" onClick={() => openPreview(r.file_url!)}>View</button>
+                                      <button className="btn-icon btn-icon-view" onClick={() => openPreview(r.file_url!)} title="View file">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                      </button>
                                     ) : r.drive_file_id ? (
-                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="file-link-btn">Drive</a>
-                                    ) : "—"}
+                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="btn-icon btn-icon-view" title="View in Drive" style={{ textDecoration: 'none' }}>
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                      </a>
+                                    ) : <span style={{ color: '#d1d5db' }}>—</span>}
                                   </td>
-                                  <td className="action-cell">
-                                    <button className="btn-move" onClick={() => toggleType(r)} title={`Move to ${r.transaction_type === 'income' ? 'Expense' : 'Income'}`}>
-                                      {r.transaction_type === "income" ? "→ Expense" : "→ Income"}
+                                  <td className="action-cell actions-td">
+                                    <button className="btn-icon btn-icon-move" onClick={() => toggleType(r)} title={`Move to ${r.transaction_type === 'income' ? 'Expense' : 'Income'}`}>
+                                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 0L3 8m4-4l4 4"/><path d="M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
                                     </button>
-                                    <button className="btn-edit" onClick={() => startEdit(r)}>Edit</button>
-                                    <button className="btn-delete" onClick={() => deleteReceipt(r)}>Delete</button>
+                                    <button className="btn-icon btn-icon-edit" onClick={() => startEdit(r)} title="Edit">
+                                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                    </button>
+                                    <button className="btn-icon btn-icon-delete" onClick={() => deleteReceipt(r)} title="Delete">
+                                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                                    </button>
                                   </td>
                                 </tr>
                               )
@@ -774,9 +827,9 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                 {monthIncome > 0 && monthExpense > 0 && " / "}
                                 {monthExpense > 0 && <span className="expense-total">-{ccy} {monthExpense.toFixed(2)}</span>}
                               </td>
-                              <td>—</td>
                               <td>{monthTax > 0 ? `${ccy} ${monthTax.toFixed(2)}` : "—"}</td>
-                              <td colSpan={4}></td>
+                              <td colSpan={3}></td>
+                              <td className="actions-td"></td>
                             </tr>
                           </tbody>
                         </table>
