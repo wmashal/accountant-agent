@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { api, authApi, getToken, setToken, clearToken, CustomerSummary, Receipt, CreateCustomerData } from "./api"
 import "./App.css"
 
@@ -87,6 +87,35 @@ export default function App() {
   return <Dashboard onLogout={handleLogout} profile={profile} />
 }
 
+// Column resize hook
+const DEFAULT_COL_WIDTHS = [110, 100, 100, 220, 120, 120, 110, 105, 55, 110]
+
+function useColResize(initial: number[]) {
+  const [widths, setWidths] = useState(initial)
+  const dragging = useRef<{ idx: number; startX: number; startW: number } | null>(null)
+
+  const onMouseDown = useCallback((idx: number, e: React.MouseEvent) => {
+    e.preventDefault()
+    dragging.current = { idx, startX: e.clientX, startW: widths[idx] }
+
+    const onMove = (me: MouseEvent) => {
+      if (!dragging.current) return
+      const delta = me.clientX - dragging.current.startX
+      const newW = Math.max(50, dragging.current.startW + delta)
+      setWidths(prev => prev.map((w, i) => i === dragging.current!.idx ? newW : w))
+    }
+    const onUp = () => {
+      dragging.current = null
+      window.removeEventListener("mousemove", onMove)
+      window.removeEventListener("mouseup", onUp)
+    }
+    window.addEventListener("mousemove", onMove)
+    window.addEventListener("mouseup", onUp)
+  }, [widths])
+
+  return { widths, onMouseDown }
+}
+
 function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { displayName: string | null; companyName: string | null; logoUrl: string | null } }) {
   const [customers, setCustomers] = useState<CustomerSummary[]>([])
   const [selected, setSelected] = useState<CustomerSummary | null>(null)
@@ -115,6 +144,9 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
   // File preview modal
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [previewIsPdf, setPreviewIsPdf] = useState(false)
+
+  // Column resizing
+  const { widths: colWidths, onMouseDown: onColResizeMouseDown } = useColResize(DEFAULT_COL_WIDTHS)
 
   // Add Customer modal
   const [showAddCustomer, setShowAddCustomer] = useState(false)
@@ -673,18 +705,24 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
 
                       {!collapsed && (
                         <table className="receipts-table">
+                          <colgroup>
+                            {colWidths.map((w, i) => (
+                              <col key={i} style={{ width: i === colWidths.length - 1 ? `${w}px` : `${w}px` }} />
+                            ))}
+                          </colgroup>
                           <thead>
                             <tr>
-                              <th>Invoice Date</th>
-                              <th>Upload Date</th>
-                              <th>Invoice #</th>
-                              <th>Supplier</th>
-                              <th>Amount</th>
-                              <th>Tax</th>
-                              <th>Type</th>
-                              <th>Status</th>
-                              <th>File</th>
-                              <th>Actions</th>
+                              {["Invoice Date","Upload Date","Invoice #","Supplier","Amount","Tax","Type","Status","File","Actions"].map((label, i) => (
+                                <th key={i} style={{ position: "relative", width: colWidths[i] }}>
+                                  {label}
+                                  {i < 9 && (
+                                    <span
+                                      className="col-resize-handle"
+                                      onMouseDown={e => onColResizeMouseDown(i, e)}
+                                    />
+                                  )}
+                                </th>
+                              ))}
                             </tr>
                           </thead>
                           <tbody>

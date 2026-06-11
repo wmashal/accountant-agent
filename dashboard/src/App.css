@@ -67,23 +67,17 @@
 
 /* Receipts table */
 .receipts-table-wrap { padding: 24px 32px; overflow-x: auto; }
-.receipts-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); table-layout: fixed; }
-.receipts-table th { background: #f9fafb; padding: 11px 10px; text-align: left; font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e5e7eb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.receipts-table td { padding: 14px 10px; font-size: 13px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.receipts-table { width: max-content; min-width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); table-layout: fixed; }
+.receipts-table th { background: #f9fafb; padding: 11px 12px; text-align: left; font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e5e7eb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; user-select: none; }
+.receipts-table td { padding: 13px 12px; font-size: 13px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .receipts-table tr:last-child td { border-bottom: none; }
 .receipts-table tr:hover td { background: #fafafa; }
-.receipts-table th:nth-child(1), .receipts-table td:nth-child(1) { width: 100px; } /* Invoice Date */
-.receipts-table th:nth-child(2), .receipts-table td:nth-child(2) { width: 90px; }  /* Upload Date */
-.receipts-table th:nth-child(3), .receipts-table td:nth-child(3) { width: 90px; }  /* Invoice # */
-.receipts-table th:nth-child(4), .receipts-table td:nth-child(4) { width: auto; }  /* Supplier — takes remaining space */
-.receipts-table th:nth-child(5), .receipts-table td:nth-child(5) { width: 110px; } /* Amount */
-.receipts-table th:nth-child(6), .receipts-table td:nth-child(6) { width: 110px; } /* Tax */
-.receipts-table th:nth-child(7), .receipts-table td:nth-child(7) { width: 100px; } /* Type */
-.receipts-table th:nth-child(8), .receipts-table td:nth-child(8) { width: 90px; }  /* Status */
-.receipts-table th:nth-child(9), .receipts-table td:nth-child(9) { width: 50px; }  /* File */
-.receipts-table th:nth-child(10), .receipts-table td:nth-child(10) { width: 96px; } /* Actions */
 .amount { font-weight: 600; }
 .no-data { text-align: center; color: #9ca3af; padding: 32px !important; }
+
+/* Column resize handle */
+.col-resize-handle { position: absolute; right: 0; top: 0; bottom: 0; width: 5px; cursor: col-resize; z-index: 1; }
+.col-resize-handle:hover, .col-resize-handle:active { background: #6366f1; opacity: 0.5; border-radius: 2px; }
 
 /* Type button */
 .type-btn { border: none; border-radius: 20px; padding: 4px 12px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
@@ -105,12 +99,12 @@
 .file-link-btn:hover { text-decoration: underline; color: #4f46e5; }
 
 /* Actions column */
-.action-cell { white-space: nowrap; display: flex; gap: 4px; align-items: center; }
+.action-cell { white-space: nowrap; display: flex; gap: 5px; align-items: center; }
 .btn-edit { background: #f3f4f6; border: 1px solid #d1d5db; color: #374151; padding: 5px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; line-height: 1; }
 .btn-edit:hover { background: #e5e7eb; }
 
 /* Icon-only action buttons */
-.btn-icon { width: 28px; height: 28px; border-radius: 6px; border: 1px solid; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s; padding: 0; line-height: 1; }
+.btn-icon { width: 34px; height: 34px; border-radius: 7px; border: 1px solid; font-size: 16px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s; padding: 0; line-height: 1; }
 .btn-icon-move { background: #f0f9ff; color: #0369a1; border-color: #bae6fd; }
 .btn-icon-move:hover { background: #e0f2fe; border-color: #7dd3fc; }
 .btn-icon-edit { background: #f0fdf4; color: #16a34a; border-color: #86efac; }
