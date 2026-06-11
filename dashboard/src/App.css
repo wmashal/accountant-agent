@@ -121,6 +121,7 @@
 .btn-icon-delete:hover { background: #fee2e2; border-color: #ef4444; }
 .btn-icon-view { background: #f5f3ff; color: #6366f1; border-color: #c4b5fd; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 7px; border: 1px solid; cursor: pointer; flex-shrink: 0; transition: all 0.15s; padding: 6px; box-sizing: border-box; }
 .btn-icon-view:hover { background: #ede9fe; border-color: #a78bfa; }
+.btn-icon-disabled { opacity: 0.25; cursor: default; pointer-events: none; }
 
 /* Inline edit row */
 .edit-row td { background: #f0f4ff !important; }

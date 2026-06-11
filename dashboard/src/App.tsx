@@ -126,9 +126,9 @@ export default function App() {
   )
 }
 
-// Column resize hook — only first 9 cols are resizable; last col (Actions) is sticky/fixed
-const DEFAULT_COL_WIDTHS = [105, 105, 90, 180, 115, 130, 100, 100, 46]
-const ACTIONS_COL_WIDTH = 130
+// Column resize hook — only first 8 cols are resizable; last col (Actions) is sticky/fixed
+const DEFAULT_COL_WIDTHS = [105, 105, 90, 180, 115, 130, 100, 100]
+const ACTIONS_COL_WIDTH = 160
 
 function useColResize(initial: number[]) {
   const [widths, setWidths] = useState(initial)
@@ -774,7 +774,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                           </colgroup>
                           <thead>
                             <tr>
-                              {[t.colDate, t.colUploadDate, t.colReceiptNo, t.colSupplier, t.colAmount, t.colTax, t.colType, t.colStatus, t.colFile].map((label, i) => (
+                              {[t.colDate, t.colUploadDate, t.colReceiptNo, t.colSupplier, t.colAmount, t.colTax, t.colType, t.colStatus].map((label, i) => (
                                 <th key={i} style={{ width: colWidths[i] }}>
                                   {label}
                                   <span className="col-resize-handle" onMouseDown={e => onColResizeMouseDown(i, e)} />
@@ -817,17 +817,6 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                       <option value="error">{t.statusError}</option>
                                     </select>
                                   </td>
-                                  <td>
-                                    {r.file_url ? (
-                                      <button className="btn-icon btn-icon-view" onClick={() => openPreview(r.file_url!)} title={t.viewFileTooltip}>
-                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                                      </button>
-                                    ) : r.drive_file_id ? (
-                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="btn-icon btn-icon-view" title={t.viewFileTooltip} style={{ textDecoration: 'none' }}>
-                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                                      </a>
-                                    ) : <span style={{ color: '#d1d5db' }}>—</span>}
-                                  </td>
                                   <td className="action-cell actions-td">
                                     <button className="btn-save btn-sm" onClick={() => saveEdit(r)}>{t.saveButton}</button>
                                     <button className="btn-cancel btn-sm" onClick={() => setEditingReceiptId(null)}>{t.cancelButton}</button>
@@ -856,25 +845,27 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                     </button>
                                   </td>
                                   <td><span className={`status-badge status-${r.status}`}>{statusLabel(r.status)}</span></td>
-                                  <td>
+                                  <td className="action-cell actions-td">
                                     {r.file_url ? (
-                                      <button className="btn-icon btn-icon-view" onClick={() => openPreview(r.file_url!)} title={t.viewFileTooltip}>
+                                      <button className="btn-icon btn-icon-view" onClick={() => openPreview(r.file_url!)}>
                                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                                       </button>
                                     ) : r.drive_file_id ? (
-                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="btn-icon btn-icon-view" title={t.viewFileTooltip} style={{ textDecoration: 'none' }}>
+                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="btn-icon btn-icon-view" style={{ textDecoration: 'none' }}>
                                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                                       </a>
-                                    ) : <span style={{ color: '#d1d5db' }}>—</span>}
-                                  </td>
-                                  <td className="action-cell actions-td">
-                                    <button className="btn-icon btn-icon-move" onClick={() => toggleType(r)} title={t.moveTooltip}>
+                                    ) : (
+                                      <span className="btn-icon btn-icon-view btn-icon-disabled">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                      </span>
+                                    )}
+                                    <button className="btn-icon btn-icon-move" onClick={() => toggleType(r)}>
                                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 0L3 8m4-4l4 4"/><path d="M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
                                     </button>
-                                    <button className="btn-icon btn-icon-edit" onClick={() => startEdit(r)} title={t.editTooltip}>
+                                    <button className="btn-icon btn-icon-edit" onClick={() => startEdit(r)}>
                                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                     </button>
-                                    <button className="btn-icon btn-icon-delete" onClick={() => deleteReceipt(r)} title={t.deleteTooltip}>
+                                    <button className="btn-icon btn-icon-delete" onClick={() => deleteReceipt(r)}>
                                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                                     </button>
                                   </td>
@@ -890,7 +881,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                 {monthExpense > 0 && <span className="expense-total">-{ccy} {monthExpense.toFixed(2)}</span>}
                               </td>
                               <td>{monthTax > 0 ? `${ccy} ${monthTax.toFixed(2)}` : "—"}</td>
-                              <td colSpan={3}></td>
+                              <td colSpan={2}></td>
                               <td className="actions-td"></td>
                             </tr>
                           </tbody>
