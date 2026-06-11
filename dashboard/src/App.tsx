@@ -705,7 +705,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                       </div>
 
                       {!collapsed && (
-                        <table className="receipts-table">
+                        <table className="receipts-table" style={{ width: colWidths.reduce((a, b) => a + b, 0) + ACTIONS_COL_WIDTH }}>
                           <colgroup>
                             {colWidths.map((w, i) => <col key={i} style={{ width: w }} />)}
                             <col style={{ width: ACTIONS_COL_WIDTH }} />
