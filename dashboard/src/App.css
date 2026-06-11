@@ -118,6 +118,8 @@
 .btn-icon-edit:hover { background: #dcfce7; border-color: #4ade80; }
 .btn-icon-delete { background: #fff0f0; color: #dc2626; border-color: #fca5a5; }
 .btn-icon-delete:hover { background: #fee2e2; border-color: #ef4444; }
+.btn-icon-view { background: #f5f3ff; color: #6366f1; border-color: #c4b5fd; display: inline-flex; align-items: center; justify-content: center; }
+.btn-icon-view:hover { background: #ede9fe; border-color: #a78bfa; }
 
 /* Inline edit row */
 .edit-row td { background: #f0f4ff !important; }

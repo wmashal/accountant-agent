@@ -88,7 +88,7 @@ export default function App() {
 }
 
 // Column resize hook — only first 9 cols are resizable; last col (Actions) is sticky/fixed
-const DEFAULT_COL_WIDTHS = [105, 105, 90, 180, 115, 130, 100, 100, 55]
+const DEFAULT_COL_WIDTHS = [105, 105, 90, 180, 115, 130, 100, 100, 46]
 const ACTIONS_COL_WIDTH = 130
 
 function useColResize(initial: number[]) {
@@ -705,9 +705,9 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                       </div>
 
                       {!collapsed && (
-                        <table className="receipts-table" style={{ width: colWidths.reduce((a, b) => a + b, 0) + ACTIONS_COL_WIDTH }}>
+                        <table className="receipts-table" style={{ minWidth: colWidths.reduce((a, b) => a + b, 0) + ACTIONS_COL_WIDTH, width: '100%' }}>
                           <colgroup>
-                            {colWidths.map((w, i) => <col key={i} style={{ width: w }} />)}
+                            {colWidths.map((w, i) => <col key={i} style={{ width: i === 3 ? 'auto' : w }} />)}
                             <col style={{ width: ACTIONS_COL_WIDTH }} />
                           </colgroup>
                           <thead>
@@ -757,10 +757,14 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                   </td>
                                   <td>
                                     {r.file_url ? (
-                                      <button className="file-link-btn" onClick={() => openPreview(r.file_url!)}>View</button>
+                                      <button className="btn-icon btn-icon-view" onClick={() => openPreview(r.file_url!)} title="View file">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                      </button>
                                     ) : r.drive_file_id ? (
-                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="file-link-btn">Drive</a>
-                                    ) : "—"}
+                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="btn-icon btn-icon-view" title="View in Drive" style={{ textDecoration: 'none' }}>
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                      </a>
+                                    ) : <span style={{ color: '#d1d5db' }}>—</span>}
                                   </td>
                                   <td className="action-cell actions-td">
                                     <button className="btn-save btn-sm" onClick={() => saveEdit(r)}>Save</button>
@@ -792,10 +796,14 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                   <td><span className={`status-badge status-${r.status}`}>{r.status.replace(/_/g, " ")}</span></td>
                                   <td>
                                     {r.file_url ? (
-                                      <button className="file-link-btn" onClick={() => openPreview(r.file_url!)}>View</button>
+                                      <button className="btn-icon btn-icon-view" onClick={() => openPreview(r.file_url!)} title="View file">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                      </button>
                                     ) : r.drive_file_id ? (
-                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="file-link-btn">Drive</a>
-                                    ) : "—"}
+                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="btn-icon btn-icon-view" title="View in Drive" style={{ textDecoration: 'none' }}>
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                      </a>
+                                    ) : <span style={{ color: '#d1d5db' }}>—</span>}
                                   </td>
                                   <td className="action-cell actions-td">
                                     <button className="btn-icon btn-icon-move" onClick={() => toggleType(r)} title={`Move to ${r.transaction_type === 'income' ? 'Expense' : 'Income'}`}>
