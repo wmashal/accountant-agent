@@ -55,6 +55,7 @@ export default function AccountantDetailPage({ accountantId, onBack }: Props) {
           twilio_from_number: a.twilio_from_number ?? '',
           gemini_api_key: '',
           default_currency: a.default_currency,
+          default_language: a.default_language,
           is_active: a.is_active,
           new_password: '',
         })
@@ -74,7 +75,7 @@ export default function AccountantDetailPage({ accountantId, onBack }: Props) {
     setSaving(true)
     try {
       const patch: Record<string, unknown> = {}
-      const fields = ['username', 'display_name', 'company_name', 'email', 'google_drive_root_folder_id', 'twilio_from_number', 'default_currency']
+      const fields = ['username', 'display_name', 'company_name', 'email', 'google_drive_root_folder_id', 'twilio_from_number', 'default_currency', 'default_language']
       for (const f of fields) {
         const v = form[f]
         if (typeof v === 'string' && v !== (acct as unknown as Record<string, unknown>)[f]) patch[f] = v || undefined
@@ -228,6 +229,18 @@ export default function AccountantDetailPage({ accountantId, onBack }: Props) {
             >
               <option value="USD">USD</option>
               <option value="ILS">ILS</option>
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#374151', marginBottom: 6 }}>Default Language</label>
+            <select
+              value={String(form.default_language ?? 'en')}
+              onChange={e => setForm(f => ({ ...f, default_language: e.target.value }))}
+              style={{ width: '100%', padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14 }}
+            >
+              <option value="en">English</option>
+              <option value="ar">Arabic (عربي)</option>
             </select>
           </div>
 

@@ -29,6 +29,7 @@ class AccountantOut(BaseModel):
     google_drive_root_folder_id: Optional[str]
     twilio_from_number: Optional[str]
     default_currency: str
+    default_language: str
     is_active: bool
     created_at: str
     customer_count: int = 0
@@ -45,6 +46,7 @@ class CreateAccountantRequest(BaseModel):
     twilio_from_number: Optional[str] = None
     gemini_api_key: Optional[str] = None
     default_currency: str = "USD"
+    default_language: str = "en"
 
 
 class UpdateAccountantRequest(BaseModel):
@@ -56,6 +58,7 @@ class UpdateAccountantRequest(BaseModel):
     twilio_from_number: Optional[str] = None
     gemini_api_key: Optional[str] = None
     default_currency: Optional[str] = None
+    default_language: Optional[str] = None
     is_active: Optional[bool] = None
     new_password: Optional[str] = None
 
@@ -87,6 +90,7 @@ async def _accountant_out(a: Accountant, session: AsyncSession) -> AccountantOut
         google_drive_root_folder_id=a.google_drive_root_folder_id,
         twilio_from_number=a.twilio_from_number,
         default_currency=a.default_currency,
+        default_language=a.default_language,
         is_active=a.is_active,
         created_at=a.created_at.isoformat(),
         customer_count=customer_count,
@@ -156,6 +160,7 @@ async def create_accountant(
         twilio_from_number=body.twilio_from_number,
         gemini_api_key=body.gemini_api_key,
         default_currency=body.default_currency,
+        default_language=body.default_language,
     )
     session.add(accountant)
     await session.commit()
@@ -215,6 +220,10 @@ async def update_accountant(
         currency = body.default_currency.strip().upper()
         if currency in ("ILS", "USD"):
             a.default_currency = currency
+    if body.default_language is not None:
+        lang = body.default_language.strip().lower()
+        if lang in ("en", "ar"):
+            a.default_language = lang
     if body.is_active is not None:
         a.is_active = body.is_active
     if body.new_password:

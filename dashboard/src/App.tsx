@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { api, authApi, getToken, setToken, clearToken, CustomerSummary, Receipt, CreateCustomerData } from "./api"
 import "./App.css"
+import { LangContext, useLang } from "./i18n/useLang"
+import { translations, Lang } from "./i18n/index"
 
-function LoginPage({ onLogin }: { onLogin: (res: { display_name: string | null; company_name: string | null; logo_url: string | null }) => void }) {
+function LoginPage({ onLogin }: { onLogin: (res: { display_name: string | null; company_name: string | null; logo_url: string | null; language?: string | null }) => void }) {
+  const { t } = useLang()
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -17,7 +20,7 @@ function LoginPage({ onLogin }: { onLogin: (res: { display_name: string | null; 
       setToken(res.access_token)
       onLogin(res)
     } catch {
-      setError("Invalid username or password")
+      setError(t.loginError)
     } finally {
       setLoading(false)
     }
@@ -26,11 +29,11 @@ function LoginPage({ onLogin }: { onLogin: (res: { display_name: string | null; 
   return (
     <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", background: "#f5f5f5" }}>
       <form onSubmit={submit} style={{ background: "#fff", padding: "2rem", borderRadius: "8px", boxShadow: "0 2px 8px rgba(0,0,0,0.1)", minWidth: "320px", display: "flex", flexDirection: "column", gap: "1rem" }}>
-        <h2 style={{ margin: 0, textAlign: "center" }}>Dashboard Login</h2>
+        <h2 style={{ margin: 0, textAlign: "center" }}>{t.loginTitle}</h2>
         {error && <div style={{ color: "red", fontSize: "0.9rem" }}>{error}</div>}
         <input
           type="text"
-          placeholder="Username"
+          placeholder={t.loginUsername}
           value={username}
           onChange={e => setUsername(e.target.value)}
           required
@@ -38,14 +41,14 @@ function LoginPage({ onLogin }: { onLogin: (res: { display_name: string | null; 
         />
         <input
           type="password"
-          placeholder="Password"
+          placeholder={t.loginPassword}
           value={password}
           onChange={e => setPassword(e.target.value)}
           required
           style={{ padding: "0.5rem", borderRadius: "4px", border: "1px solid #ccc", fontSize: "1rem" }}
         />
         <button type="submit" disabled={loading} style={{ padding: "0.6rem", background: "#007bff", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "1rem" }}>
-          {loading ? "Logging in…" : "Login"}
+          {loading ? "…" : t.loginButton}
         </button>
       </form>
     </div>
@@ -53,11 +56,13 @@ function LoginPage({ onLogin }: { onLogin: (res: { display_name: string | null; 
 }
 
 // Format a YYYY-MM string to a human-readable month label
-function formatMonth(ym: string) {
+function formatMonth(ym: string, lang: Lang) {
   if (ym === "Unknown") return "Unknown Date"
   try {
     const [y, m] = ym.split("-")
-    return new Date(Number(y), Number(m) - 1, 1).toLocaleString("default", { month: "long", year: "numeric" })
+    const monthIdx = Number(m) - 1
+    const monthName = translations[lang].months[monthIdx]
+    return `${monthName} ${y}`
   } catch {
     return ym
   }
@@ -70,11 +75,37 @@ export default function App() {
     catch { return { displayName: null, companyName: null, logoUrl: null } }
   })
 
-  const handleLogin = (res: { display_name: string | null; company_name: string | null; logo_url: string | null }) => {
+  const [lang, setLangState] = useState<Lang>(() => {
+    const stored = localStorage.getItem('lang') as Lang | null
+    if (stored === 'ar' || stored === 'en') return stored
+    try {
+      const p = JSON.parse(localStorage.getItem('acct_profile') || 'null')
+      if (p?.language === 'ar') return 'ar'
+    } catch { /* ignore */ }
+    return 'en'
+  })
+
+  const setLang = (l: Lang) => {
+    setLangState(l)
+    localStorage.setItem('lang', l)
+    document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr'
+    document.documentElement.lang = l
+  }
+
+  // Apply dir/lang on mount
+  useEffect(() => {
+    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr'
+    document.documentElement.lang = lang
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleLogin = (res: { display_name: string | null; company_name: string | null; logo_url: string | null; language?: string | null }) => {
     setTokenState(getToken())
     const p = { displayName: res.display_name, companyName: res.company_name, logoUrl: res.logo_url }
     setProfile(p)
     localStorage.setItem('acct_profile', JSON.stringify(p))
+    if (res.language === 'ar' || res.language === 'en') {
+      setLang(res.language)
+    }
   }
 
   const handleLogout = () => {
@@ -83,8 +114,16 @@ export default function App() {
     setTokenState(null)
   }
 
-  if (!token) return <LoginPage onLogin={handleLogin} />
-  return <Dashboard onLogout={handleLogout} profile={profile} />
+  const ctxValue = { lang, setLang, t: translations[lang] }
+
+  return (
+    <LangContext.Provider value={ctxValue}>
+      {!token
+        ? <LoginPage onLogin={handleLogin} />
+        : <Dashboard onLogout={handleLogout} profile={profile} />
+      }
+    </LangContext.Provider>
+  )
 }
 
 // Column resize hook — only first 9 cols are resizable; last col (Actions) is sticky/fixed
@@ -118,6 +157,7 @@ function useColResize(initial: number[]) {
 }
 
 function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { displayName: string | null; companyName: string | null; logoUrl: string | null } }) {
+  const { t, lang, setLang } = useLang()
   const [customers, setCustomers] = useState<CustomerSummary[]>([])
   const [selected, setSelected] = useState<CustomerSummary | null>(null)
   const [receipts, setReceipts] = useState<Receipt[]>([])
@@ -238,7 +278,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
   }
 
   const deleteReceipt = async (r: Receipt) => {
-    if (!confirm(`Delete invoice from "${r.vendor || 'Unknown'}"? This will also remove the file from storage.`)) return
+    if (!confirm(t.deleteConfirm(r.vendor || 'Unknown'))) return
     await api.deleteReceipt(r.id)
     setReceipts(prev => prev.filter(x => x.id !== r.id))
     await loadCustomers()
@@ -306,6 +346,17 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
     return `${(rate * 100).toFixed(0)}%`
   }
 
+  const statusLabel = (status: string) => {
+    const map: Record<string, string> = {
+      processing: t.statusProcessing,
+      pending_confirmation: t.statusPendingConfirmation,
+      confirmed: t.statusConfirmed,
+      rejected: t.statusRejected,
+      error: t.statusError,
+    }
+    return map[status] ?? status.replace(/_/g, " ")
+  }
+
   return (
     <div className="layout">
       {/* File Preview Modal */}
@@ -327,19 +378,19 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
         <div className="modal-overlay" onClick={closeAddCustomer}>
           <div className="add-customer-modal" onClick={e => e.stopPropagation()}>
             <button className="modal-close" onClick={closeAddCustomer}>✕</button>
-            <h3>Add Customer</h3>
+            <h3>{t.addCustomerTitle}</h3>
             {newCustomerDriveLink ? (
               <div className="drive-success">
-                <p>Customer created! Share their Google Drive folder:</p>
+                <p>{t.driveFolderCreated}</p>
                 <a href={newCustomerDriveLink} target="_blank" rel="noreferrer" className="drive-link">
-                  📁 Open Drive Folder
+                  📁 {t.driveFolderOpenLink}
                 </a>
-                <p className="drive-hint">Ask the customer to upload their invoices to this folder.</p>
-                <button className="btn-save" onClick={closeAddCustomer}>Done</button>
+                <p className="drive-hint">{t.driveFolderHint}</p>
+                <button className="btn-save" onClick={closeAddCustomer}>{t.doneButton}</button>
               </div>
             ) : (
               <form onSubmit={submitAddCustomer} className="add-customer-form">
-                <label>Full Name *
+                <label>{t.addCustomerName}
                   <input
                     required
                     autoFocus
@@ -348,25 +399,25 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                     placeholder="e.g. Wael Mashal"
                   />
                 </label>
-                <label>Company Name
+                <label>{t.addCustomerCompany}
                   <input
                     value={addForm.company_name}
                     onChange={e => setAddForm(p => ({ ...p, company_name: e.target.value }))}
                     placeholder="e.g. Mashal Ltd"
                   />
                 </label>
-                <label>Company ID / Registration No.
+                <label>{t.addCustomerCompanyId}
                   <input
                     value={addForm.company_id}
                     onChange={e => setAddForm(p => ({ ...p, company_id: e.target.value }))}
                     placeholder="e.g. 12345"
                   />
                 </label>
-                <label>WhatsApp Number (optional)
+                <label>{t.addCustomerPhone}
                   <input
                     value={addForm.phone_number}
                     onChange={e => setAddForm(p => ({ ...p, phone_number: e.target.value }))}
-                    placeholder="+61400000000"
+                    placeholder={t.addCustomerPhonePlaceholder}
                   />
                 </label>
                 <label>Default Currency
@@ -380,9 +431,9 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                 </label>
                 <div className="add-customer-btns">
                   <button type="submit" className="btn-save" disabled={addLoading}>
-                    {addLoading ? "Creating…" : "Create Customer"}
+                    {addLoading ? t.creatingButton : t.createButton}
                   </button>
-                  <button type="button" className="btn-cancel" onClick={closeAddCustomer}>Cancel</button>
+                  <button type="button" className="btn-cancel" onClick={closeAddCustomer}>{t.cancelButton}</button>
                 </div>
               </form>
             )}
@@ -396,16 +447,16 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
             <img src={profile.logoUrl} alt="logo" style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover', marginBottom: '0.5rem' }} />
           )}
           <h1>{profile.companyName || profile.displayName || 'Accountant'}</h1>
-          <p className="subtitle">Invoice Dashboard</p>
+          <p className="subtitle">{t.invoiceDashboard}</p>
           <button onClick={onLogout} style={{ marginTop: "0.5rem", padding: "0.3rem 0.8rem", fontSize: "0.8rem", background: "transparent", border: "1px solid #ccc", borderRadius: "4px", cursor: "pointer", color: "#666" }}>
-            Logout
+            {t.logout}
           </button>
         </div>
         <div className="search-wrap">
           <input
             className="search-input"
             type="text"
-            placeholder="Search name, phone, company..."
+            placeholder={t.searchPlaceholder}
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -414,9 +465,9 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
           )}
         </div>
         {loading ? (
-          <p className="loading">Loading...</p>
+          <p className="loading">{t.loading}</p>
         ) : filteredCustomers.length === 0 ? (
-          <p className="empty">{search ? "No results" : "No customers yet"}</p>
+          <p className="empty">{search ? "—" : t.noCustomers}</p>
         ) : (
           <ul className="customer-list">
             {filteredCustomers.map(c => (
@@ -441,7 +492,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                 <div className="customer-stats">
                   <span className="income-badge">+{c.total_income.toFixed(0)}</span>
                   <span className="expense-badge">-{c.total_expense.toFixed(0)}</span>
-                  <span className="count-badge">{c.total_receipts}</span>
+                  <span className="count-badge">{t.invoicesCount(c.total_receipts)}</span>
                 </div>
               </li>
             ))}
@@ -449,16 +500,27 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
         )}
         <div className="sidebar-footer">
           <button className="add-customer-btn" onClick={() => setShowAddCustomer(true)}>
-            + Add Customer
+            {t.addCustomer}
           </button>
+          {/* Language switcher */}
+          <div className="lang-switcher">
+            <button
+              className={`lang-btn ${lang === 'en' ? 'active' : ''}`}
+              onClick={() => setLang('en')}
+            >EN</button>
+            <button
+              className={`lang-btn ${lang === 'ar' ? 'active' : ''}`}
+              onClick={() => setLang('ar')}
+            >عربي</button>
+          </div>
         </div>
       </aside>
 
       <main className="main">
         {!selected ? (
           <div className="empty-state">
-            <h2>Select a customer</h2>
-            <p>Choose a customer from the sidebar to view their invoices</p>
+            <h2>{t.selectCustomer}</h2>
+            <p>{t.selectCustomerSub}</p>
           </div>
         ) : (
           <>
@@ -466,36 +528,36 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
               <div className="customer-title">
                 {editingProfile ? (
                   <div className="profile-edit">
-                    <label>Name
+                    <label>{t.profileName}
                       <input
                         value={profileForm.display_name}
                         onChange={e => setProfileForm(p => ({ ...p, display_name: e.target.value }))}
-                        placeholder="Full name"
+                        placeholder={t.profileName}
                         autoFocus
                       />
                     </label>
-                    <label>Company
+                    <label>{t.profileCompany}
                       <input
                         value={profileForm.company_name}
                         onChange={e => setProfileForm(p => ({ ...p, company_name: e.target.value }))}
-                        placeholder="Company name"
+                        placeholder={t.profileCompany}
                       />
                     </label>
-                    <label>ID / Reg No.
+                    <label>{t.profileCompanyId}
                       <input
                         value={profileForm.company_id}
                         onChange={e => setProfileForm(p => ({ ...p, company_id: e.target.value }))}
-                        placeholder="Company ID or registration number"
+                        placeholder={t.profileCompanyId}
                       />
                     </label>
-                    <label>WhatsApp Number
+                    <label>{t.profilePhone}
                       <input
                         value={profileForm.phone_number}
                         onChange={e => setProfileForm(p => ({ ...p, phone_number: e.target.value }))}
                         placeholder="+61400000000"
                       />
                     </label>
-                    <label>Default Currency
+                    <label>Currency
                       <select
                         value={profileForm.default_currency}
                         onChange={e => setProfileForm(p => ({ ...p, default_currency: e.target.value }))}
@@ -505,15 +567,15 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                       </select>
                     </label>
                     <div className="profile-edit-btns">
-                      <button className="btn-save" onClick={saveProfile}>Save</button>
-                      <button className="btn-cancel" onClick={() => setEditingProfile(false)}>Cancel</button>
+                      <button className="btn-save" onClick={saveProfile}>{t.saveButton}</button>
+                      <button className="btn-cancel" onClick={() => setEditingProfile(false)}>{t.cancelButton}</button>
                     </div>
                   </div>
                 ) : (
                   <div onClick={() => setEditingProfile(true)} className="customer-info-click" title="Click to edit">
                     <h2>
                       {selected.display_name || selected.phone_number}
-                      <span className="edit-hint"> ✎</span>
+                      <span className="edit-hint"> {t.editHint}</span>
                       <span className="header-source">{sourceLabel(selected.source)}</span>
                     </h2>
                     {(selected.company_name || selected.company_id) && (
@@ -526,7 +588,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                             : null}
                       </div>
                     )}
-                    <p className="phone-sub">{selected.phone_number.startsWith("drive_") ? "No phone" : selected.phone_number}</p>
+                    <p className="phone-sub">{selected.phone_number.startsWith("drive_") ? "—" : selected.phone_number}</p>
                     {selected.drive_share_link && (
                       <a
                         href={selected.drive_share_link}
@@ -535,7 +597,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                         className="drive-folder-link"
                         onClick={e => e.stopPropagation()}
                       >
-                        📁 Drive Folder
+                        📁 {t.driveFolderLink}
                       </a>
                     )}
                   </div>
@@ -543,18 +605,18 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
               </div>
               <div className="summary-cards">
                 <div className="card income">
-                  <div className="card-label">Confirmed Income</div>
+                  <div className="card-label">{t.confirmedIncome}</div>
                   <div className="card-value">{totalIncome.toFixed(2)}</div>
                 </div>
                 <div className="card expense">
-                  <div className="card-label">Confirmed Expenses</div>
+                  <div className="card-label">{t.confirmedExpenses}</div>
                   <div className="card-value">{totalExpense.toFixed(2)}</div>
                 </div>
                 <div className="card net">
-                  <div className="card-label">Net</div>
+                  <div className="card-label">{t.net}</div>
                   <div className="card-value">{(totalIncome - totalExpense).toFixed(2)}</div>
                 </div>
-                <button className="btn-refresh" onClick={refreshCustomer} title="Refresh invoices">↻ Refresh</button>
+                <button className="btn-refresh" onClick={refreshCustomer} title={t.refreshButton}>↻ {t.refreshButton}</button>
               </div>
             </div>
 
@@ -569,7 +631,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                       className={`type-filter-tab ${typeFilter === tab ? "active" : ""} ${tab !== "all" ? tab : ""}`}
                       onClick={() => setTypeFilter(tab)}
                     >
-                      {tab === "all" ? "All" : tab === "income" ? "↑ Income" : "↓ Expense"}
+                      {tab === "all" ? t.filterAll : tab === "income" ? `↑ ${t.filterIncome}` : `↓ ${t.filterExpense}`}
                       <span className="tab-count">
                         {receipts.filter(r => tab === "all" || r.transaction_type === tab).length}
                       </span>
@@ -592,41 +654,41 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                   </label>
 
                   <label className="filter-label">
-                    Invoice Month
+                    {t.filterMonth} (Invoice)
                     <select
                       className="filter-select"
                       value={invoiceMonthFilter}
                       onChange={e => setInvoiceMonthFilter(e.target.value)}
                     >
-                      <option value="all">All</option>
+                      <option value="all">{t.filterAllMonths}</option>
                       {invoiceMonths.map(m => (
-                        <option key={m} value={m}>{formatMonth(m)}</option>
+                        <option key={m} value={m}>{formatMonth(m, lang)}</option>
                       ))}
                     </select>
                   </label>
 
                   <label className="filter-label">
-                    Upload Month
+                    {t.filterMonth} (Upload)
                     <select
                       className="filter-select"
                       value={uploadMonthFilter}
                       onChange={e => setUploadMonthFilter(e.target.value)}
                     >
-                      <option value="all">All</option>
+                      <option value="all">{t.filterAllMonths}</option>
                       {uploadMonths.map(m => (
-                        <option key={m} value={m}>{formatMonth(m)}</option>
+                        <option key={m} value={m}>{formatMonth(m, lang)}</option>
                       ))}
                     </select>
                   </label>
 
                   <label className="filter-label">
-                    Supplier
+                    {t.colSupplier}
                     <select
                       className="filter-select"
                       value={supplierFilter}
                       onChange={e => setSupplierFilter(e.target.value)}
                     >
-                      <option value="all">All</option>
+                      <option value="all">{t.filterAll}</option>
                       {suppliers.map(s => (
                         <option key={s} value={s}>{s}</option>
                       ))}
@@ -658,7 +720,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                   filtered = filtered.filter(r => (r.vendor || "Unknown") === supplierFilter)
                 }
 
-                if (filtered.length === 0) return <p className="no-data">No invoices</p>
+                if (filtered.length === 0) return <p className="no-data">{t.noReceiptsInPeriod}</p>
 
                 // Group by chosen dimension
                 const groups: Record<string, typeof filtered> = {}
@@ -694,11 +756,11 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                       >
                         <span className="month-toggle">{collapsed ? "▶" : "▼"}</span>
                         <span className="month-label">
-                          {formatMonth(month)}
+                          {formatMonth(month, lang)}
                           {groupBy === "upload" ? <span className="month-dim-badge"> upload</span> : <span className="month-dim-badge"> invoice date</span>}
                         </span>
                         <span className="month-stats">
-                          <span className="month-count">{monthReceipts.length} invoices</span>
+                          <span className="month-count">{t.invoicesCount(monthReceipts.length)}</span>
                           {monthIncome > 0 && <span className="income-badge">+{ccy} {monthIncome.toFixed(2)}</span>}
                           {monthExpense > 0 && <span className="expense-badge">-{ccy} {monthExpense.toFixed(2)}</span>}
                         </span>
@@ -712,25 +774,25 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                           </colgroup>
                           <thead>
                             <tr>
-                              {["Invoice Date","Upload Date","Invoice #","Supplier","Amount","Tax","Type","Status","File"].map((label, i) => (
+                              {[t.colDate, t.colDate + " (↑)", t.colReceiptNo, t.colSupplier, t.colAmount, t.colTax, t.colType, t.colStatus, t.colFile].map((label, i) => (
                                 <th key={i} style={{ width: colWidths[i] }}>
-                                  {label}
+                                  {i === 1 ? "Upload Date" : label}
                                   <span className="col-resize-handle" onMouseDown={e => onColResizeMouseDown(i, e)} />
                                 </th>
                               ))}
-                              <th className="actions-th">Actions</th>
+                              <th className="actions-th">{t.colActions}</th>
                             </tr>
                           </thead>
                           <tbody>
                             {monthReceipts.map(r => (
                               editingReceiptId === r.id ? (
                                 <tr key={r.id} className="edit-row">
-                                  <td><input className="edit-input" value={editForm.date || ""} onChange={e => setEditForm(p => ({ ...p, date: e.target.value }))} placeholder="YYYY-MM-DD" /></td>
+                                  <td><input className="edit-input" value={editForm.date || ""} onChange={e => setEditForm(p => ({ ...p, date: e.target.value }))} placeholder={t.editDatePlaceholder} /></td>
                                   <td>{r.upload_date ? r.upload_date.slice(0, 10) : "—"}</td>
-                                  <td><input className="edit-input" value={editForm.receipt_number || ""} onChange={e => setEditForm(p => ({ ...p, receipt_number: e.target.value }))} placeholder="Invoice #" /></td>
-                                  <td><input className="edit-input" value={editForm.vendor || ""} onChange={e => setEditForm(p => ({ ...p, vendor: e.target.value }))} placeholder="Supplier" /></td>
+                                  <td><input className="edit-input" value={editForm.receipt_number || ""} onChange={e => setEditForm(p => ({ ...p, receipt_number: e.target.value }))} placeholder={t.editReceiptNoPlaceholder} /></td>
+                                  <td><input className="edit-input" value={editForm.vendor || ""} onChange={e => setEditForm(p => ({ ...p, vendor: e.target.value }))} placeholder={t.editVendorPlaceholder} /></td>
                                   <td>
-                                    <input className="edit-input edit-input-sm" type="number" value={editForm.cost ?? ""} onChange={e => setEditForm(p => ({ ...p, cost: parseFloat(e.target.value) || undefined }))} placeholder="Amount" />
+                                    <input className="edit-input edit-input-sm" type="number" value={editForm.cost ?? ""} onChange={e => setEditForm(p => ({ ...p, cost: parseFloat(e.target.value) || undefined }))} placeholder={t.editAmountPlaceholder} />
                                     <input className="edit-input edit-input-xs" value={editForm.currency || ""} onChange={e => setEditForm(p => ({ ...p, currency: e.target.value }))} placeholder="CCY" maxLength={3} />
                                   </td>
                                   <td>
@@ -739,36 +801,36 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                       <option value="0.17">17%</option>
                                       <option value="0.18">18%</option>
                                     </select>
-                                    <input className="edit-input edit-input-sm" type="number" value={editForm.tax ?? ""} onChange={e => setEditForm(p => ({ ...p, tax: parseFloat(e.target.value) || undefined }))} placeholder="Tax amt" style={{ marginTop: 3 }} />
+                                    <input className="edit-input edit-input-sm" type="number" value={editForm.tax ?? ""} onChange={e => setEditForm(p => ({ ...p, tax: parseFloat(e.target.value) || undefined }))} placeholder={t.editTaxPlaceholder} style={{ marginTop: 3 }} />
                                   </td>
                                   <td>
                                     <select className="edit-select" value={editForm.transaction_type} onChange={e => setEditForm(p => ({ ...p, transaction_type: e.target.value as "income" | "expense" }))}>
-                                      <option value="income">Income</option>
-                                      <option value="expense">Expense</option>
+                                      <option value="income">{t.typeIncome}</option>
+                                      <option value="expense">{t.typeExpense}</option>
                                     </select>
                                   </td>
                                   <td>
                                     <select className="edit-select" value={editForm.status} onChange={e => setEditForm(p => ({ ...p, status: e.target.value }))}>
-                                      <option value="pending_confirmation">Pending</option>
-                                      <option value="confirmed">Confirmed</option>
-                                      <option value="rejected">Rejected</option>
-                                      <option value="error">Error</option>
+                                      <option value="pending_confirmation">{t.statusPendingConfirmation}</option>
+                                      <option value="confirmed">{t.statusConfirmed}</option>
+                                      <option value="rejected">{t.statusRejected}</option>
+                                      <option value="error">{t.statusError}</option>
                                     </select>
                                   </td>
                                   <td>
                                     {r.file_url ? (
-                                      <button className="btn-icon btn-icon-view" onClick={() => openPreview(r.file_url!)} title="View file">
+                                      <button className="btn-icon btn-icon-view" onClick={() => openPreview(r.file_url!)} title={t.viewFileTooltip}>
                                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                                       </button>
                                     ) : r.drive_file_id ? (
-                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="btn-icon btn-icon-view" title="View in Drive" style={{ textDecoration: 'none' }}>
+                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="btn-icon btn-icon-view" title={t.viewFileTooltip} style={{ textDecoration: 'none' }}>
                                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                                       </a>
                                     ) : <span style={{ color: '#d1d5db' }}>—</span>}
                                   </td>
                                   <td className="action-cell actions-td">
-                                    <button className="btn-save btn-sm" onClick={() => saveEdit(r)}>Save</button>
-                                    <button className="btn-cancel btn-sm" onClick={() => setEditingReceiptId(null)}>Cancel</button>
+                                    <button className="btn-save btn-sm" onClick={() => saveEdit(r)}>{t.saveButton}</button>
+                                    <button className="btn-cancel btn-sm" onClick={() => setEditingReceiptId(null)}>{t.cancelButton}</button>
                                   </td>
                                 </tr>
                               ) : (
@@ -790,29 +852,29 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                   </td>
                                   <td>
                                     <button className={`type-btn ${r.transaction_type}`} onClick={() => toggleType(r)} title="Click to toggle">
-                                      {r.transaction_type === "income" ? "↑ Income" : "↓ Expense"}
+                                      {r.transaction_type === "income" ? `↑ ${t.typeIncome}` : `↓ ${t.typeExpense}`}
                                     </button>
                                   </td>
-                                  <td><span className={`status-badge status-${r.status}`}>{r.status.replace(/_/g, " ")}</span></td>
+                                  <td><span className={`status-badge status-${r.status}`}>{statusLabel(r.status)}</span></td>
                                   <td>
                                     {r.file_url ? (
-                                      <button className="btn-icon btn-icon-view" onClick={() => openPreview(r.file_url!)} title="View file">
+                                      <button className="btn-icon btn-icon-view" onClick={() => openPreview(r.file_url!)} title={t.viewFileTooltip}>
                                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                                       </button>
                                     ) : r.drive_file_id ? (
-                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="btn-icon btn-icon-view" title="View in Drive" style={{ textDecoration: 'none' }}>
+                                      <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer" className="btn-icon btn-icon-view" title={t.viewFileTooltip} style={{ textDecoration: 'none' }}>
                                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                                       </a>
                                     ) : <span style={{ color: '#d1d5db' }}>—</span>}
                                   </td>
                                   <td className="action-cell actions-td">
-                                    <button className="btn-icon btn-icon-move" onClick={() => toggleType(r)} title={`Move to ${r.transaction_type === 'income' ? 'Expense' : 'Income'}`}>
+                                    <button className="btn-icon btn-icon-move" onClick={() => toggleType(r)} title={t.moveTooltip}>
                                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 0L3 8m4-4l4 4"/><path d="M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>
                                     </button>
-                                    <button className="btn-icon btn-icon-edit" onClick={() => startEdit(r)} title="Edit">
+                                    <button className="btn-icon btn-icon-edit" onClick={() => startEdit(r)} title={t.editTooltip}>
                                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                     </button>
-                                    <button className="btn-icon btn-icon-delete" onClick={() => deleteReceipt(r)} title="Delete">
+                                    <button className="btn-icon btn-icon-delete" onClick={() => deleteReceipt(r)} title={t.deleteTooltip}>
                                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                                     </button>
                                   </td>
@@ -821,7 +883,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                             ))}
                             {/* Monthly totals row */}
                             <tr className="month-total-row">
-                              <td colSpan={4}><strong>Total ({formatMonth(month)})</strong></td>
+                              <td colSpan={4}><strong>{t.monthTotal} ({formatMonth(month, lang)})</strong></td>
                               <td className="amount">
                                 {monthIncome > 0 && <span className="income-total">+{ccy} {monthIncome.toFixed(2)}</span>}
                                 {monthIncome > 0 && monthExpense > 0 && " / "}

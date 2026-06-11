@@ -21,6 +21,7 @@ class Accountant(Base):
     twilio_from_number: Mapped[Optional[str]] = mapped_column(sa.String(50), nullable=True, index=True)
     gemini_api_key: Mapped[Optional[str]] = mapped_column(sa.String(200), nullable=True)
     default_currency: Mapped[str] = mapped_column(sa.String(10), default="USD")
+    default_language: Mapped[str] = mapped_column(sa.String(10), default="en")
     is_active: Mapped[bool] = mapped_column(sa.Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),

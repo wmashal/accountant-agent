@@ -26,6 +26,7 @@ class LoginResponse(BaseModel):
     display_name: str | None = None
     company_name: str | None = None
     logo_url: str | None = None
+    language: str | None = None
 
 
 @router.post("/api/auth/login", response_model=LoginResponse)
@@ -53,6 +54,7 @@ async def accountant_login(body: LoginRequest, session: AsyncSession = Depends(g
         display_name=accountant.display_name,
         company_name=accountant.company_name,
         logo_url=accountant.logo_url,
+        language=accountant.default_language,
     )
 
 
