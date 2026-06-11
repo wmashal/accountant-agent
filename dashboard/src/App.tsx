@@ -680,7 +680,6 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                               <th>Invoice #</th>
                               <th>Supplier</th>
                               <th>Amount</th>
-                              <th>Tax Rate</th>
                               <th>Tax</th>
                               <th>Type</th>
                               <th>Status</th>
@@ -701,13 +700,13 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                     <input className="edit-input edit-input-xs" value={editForm.currency || ""} onChange={e => setEditForm(p => ({ ...p, currency: e.target.value }))} placeholder="CCY" maxLength={3} />
                                   </td>
                                   <td>
-                                    <select className="edit-select" value={editForm.tax_rate != null ? String(editForm.tax_rate) : ""} onChange={e => setEditForm(p => ({ ...p, tax_rate: e.target.value ? parseFloat(e.target.value) : undefined }))}>
-                                      <option value="">—</option>
+                                    <select className="edit-select edit-select-xs" value={editForm.tax_rate != null ? String(editForm.tax_rate) : ""} onChange={e => setEditForm(p => ({ ...p, tax_rate: e.target.value ? parseFloat(e.target.value) : undefined }))}>
+                                      <option value="">—%</option>
                                       <option value="0.17">17%</option>
                                       <option value="0.18">18%</option>
                                     </select>
+                                    <input className="edit-input edit-input-sm" type="number" value={editForm.tax ?? ""} onChange={e => setEditForm(p => ({ ...p, tax: parseFloat(e.target.value) || undefined }))} placeholder="Tax amt" style={{ marginTop: 3 }} />
                                   </td>
-                                  <td><input className="edit-input edit-input-sm" type="number" value={editForm.tax ?? ""} onChange={e => setEditForm(p => ({ ...p, tax: parseFloat(e.target.value) || undefined }))} placeholder="Tax" /></td>
                                   <td>
                                     <select className="edit-select" value={editForm.transaction_type} onChange={e => setEditForm(p => ({ ...p, transaction_type: e.target.value as "income" | "expense" }))}>
                                       <option value="income">Income</option>
@@ -741,8 +740,16 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                   <td>{r.receipt_number || "—"}</td>
                                   <td>{r.vendor || "—"}</td>
                                   <td className="amount">{r.cost != null ? `${r.currency} ${r.cost.toFixed(2)}` : "—"}</td>
-                                  <td>{formatTaxRate(r.tax_rate)}</td>
-                                  <td>{r.tax != null ? `${r.currency} ${r.tax.toFixed(2)}` : "—"}</td>
+                                  <td className="tax-cell">
+                                    {r.tax != null ? (
+                                      <span>
+                                        {r.tax_rate != null && <span className="tax-rate-chip">{formatTaxRate(r.tax_rate)}</span>}
+                                        {r.currency} {r.tax.toFixed(2)}
+                                      </span>
+                                    ) : r.tax_rate != null ? (
+                                      <span className="tax-rate-chip">{formatTaxRate(r.tax_rate)}</span>
+                                    ) : "—"}
+                                  </td>
                                   <td>
                                     <button className={`type-btn ${r.transaction_type}`} onClick={() => toggleType(r)} title="Click to toggle">
                                       {r.transaction_type === "income" ? "↑ Income" : "↓ Expense"}
@@ -758,10 +765,10 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                   </td>
                                   <td className="action-cell">
                                     <button className="btn-move" onClick={() => toggleType(r)} title={`Move to ${r.transaction_type === 'income' ? 'Expense' : 'Income'}`}>
-                                      {r.transaction_type === "income" ? "→ Expense" : "→ Income"}
+                                      {r.transaction_type === "income" ? "⇄ Expense" : "⇄ Income"}
                                     </button>
-                                    <button className="btn-edit" onClick={() => startEdit(r)}>Edit</button>
-                                    <button className="btn-delete" onClick={() => deleteReceipt(r)}>Delete</button>
+                                    <button className="btn-edit" onClick={() => startEdit(r)} title="Edit">✎ Edit</button>
+                                    <button className="btn-delete" onClick={() => deleteReceipt(r)} title="Delete">✕</button>
                                   </td>
                                 </tr>
                               )
@@ -774,7 +781,6 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                 {monthIncome > 0 && monthExpense > 0 && " / "}
                                 {monthExpense > 0 && <span className="expense-total">-{ccy} {monthExpense.toFixed(2)}</span>}
                               </td>
-                              <td>—</td>
                               <td>{monthTax > 0 ? `${ccy} ${monthTax.toFixed(2)}` : "—"}</td>
                               <td colSpan={4}></td>
                             </tr>

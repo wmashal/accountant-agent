@@ -68,8 +68,8 @@
 /* Receipts table */
 .receipts-table-wrap { padding: 24px 32px; overflow-x: auto; }
 .receipts-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-.receipts-table th { background: #f9fafb; padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e5e7eb; }
-.receipts-table td { padding: 12px 14px; font-size: 14px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
+.receipts-table th { background: #f9fafb; padding: 11px 16px; text-align: left; font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
+.receipts-table td { padding: 14px 16px; font-size: 14px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
 .receipts-table tr:last-child td { border-bottom: none; }
 .receipts-table tr:hover td { background: #fafafa; }
 .amount { font-weight: 600; }
@@ -96,7 +96,8 @@
 
 /* Actions column */
 .action-cell { white-space: nowrap; }
-.btn-edit { background: #f3f4f6; border: 1px solid #d1d5db; color: #374151; padding: 4px 10px; border-radius: 5px; font-size: 12px; cursor: pointer; }
+.action-cell { display: flex; gap: 6px; align-items: center; }
+.btn-edit { background: #f3f4f6; border: 1px solid #d1d5db; color: #374151; padding: 5px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; line-height: 1; }
 .btn-edit:hover { background: #e5e7eb; }
 
 /* Inline edit row */
@@ -107,6 +108,11 @@
 .edit-input-xs { min-width: 42px; max-width: 52px; margin-left: 4px; }
 .edit-select { border: 1px solid #c7d2fe; border-radius: 5px; padding: 4px 6px; font-size: 13px; outline: none; background: #fff; }
 .edit-select:focus { border-color: #6366f1; }
+.edit-select-xs { min-width: 60px; max-width: 70px; display: block; margin-bottom: 3px; }
+
+/* Tax cell */
+.tax-cell { white-space: nowrap; font-size: 14px; }
+.tax-rate-chip { display: inline-block; background: #f3f4f6; color: #6b7280; border-radius: 4px; font-size: 11px; padding: 1px 5px; margin-right: 5px; font-weight: 500; vertical-align: middle; }
 
 /* File Preview Modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 1000; display: flex; align-items: center; justify-content: center; }
@@ -167,13 +173,13 @@
 .no-data { padding: 32px; text-align: center; color: #9ca3af; font-size: 14px; }
 
 /* Move and Delete buttons */
-.btn-move { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; border-radius: 5px; padding: 3px 8px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.btn-move { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; border-radius: 6px; padding: 5px 10px; font-size: 13px; cursor: pointer; white-space: nowrap; line-height: 1; }
 .btn-move:hover { background: #e0f2fe; border-color: #7dd3fc; }
 .btn-refresh { background: #f3f4f6; border: 1px solid #d1d5db; color: #374151; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; align-self: center; margin-left: auto; }
 .btn-refresh:hover { background: #e5e7eb; }
 
 /* Delete button */
-.btn-delete { background: #fff0f0; color: #dc2626; border: 1px solid #fca5a5; border-radius: 5px; padding: 3px 8px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.btn-delete { background: #fff0f0; color: #dc2626; border: 1px solid #fca5a5; border-radius: 6px; padding: 5px 10px; font-size: 13px; cursor: pointer; white-space: nowrap; line-height: 1; }
 .btn-delete:hover { background: #fee2e2; border-color: #ef4444; }
 
 /* Filter bar */
