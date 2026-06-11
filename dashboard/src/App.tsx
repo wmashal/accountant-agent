@@ -89,7 +89,7 @@ export default function App() {
 
 // Column resize hook — only first 9 cols are resizable; last col (Actions) is sticky/fixed
 const DEFAULT_COL_WIDTHS = [105, 105, 90, 180, 115, 130, 100, 100, 55]
-const ACTIONS_COL_WIDTH = 115
+const ACTIONS_COL_WIDTH = 130
 
 function useColResize(initial: number[]) {
   const [widths, setWidths] = useState(initial)

@@ -76,7 +76,7 @@
 .no-data { text-align: center; color: #9ca3af; padding: 32px !important; }
 
 /* Sticky Actions column */
-.actions-th, .actions-td { position: sticky; right: 0; background: #f9fafb; z-index: 2; border-left: 1px solid #e5e7eb; width: 115px; min-width: 115px; }
+.actions-th, .actions-td { position: sticky; right: 0; background: #f9fafb; z-index: 2; border-left: 1px solid #e5e7eb; width: 130px; min-width: 130px; }
 .actions-td { background: #fff; }
 .receipts-table tr:hover .actions-td { background: #fafafa; }
 .month-total-row .actions-td { background: #f0f9ff !important; }
@@ -106,7 +106,7 @@
 .file-link-btn:hover { text-decoration: underline; color: #4f46e5; }
 
 /* Actions column */
-.action-cell { white-space: nowrap; display: flex; gap: 5px; align-items: center; }
+.action-cell { white-space: nowrap; display: flex; gap: 7px; align-items: center; padding: 0 4px; }
 .btn-edit { background: #f3f4f6; border: 1px solid #d1d5db; color: #374151; padding: 5px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; line-height: 1; }
 .btn-edit:hover { background: #e5e7eb; }
 
