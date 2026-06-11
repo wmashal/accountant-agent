@@ -213,3 +213,21 @@
 .month-total-row .amount { font-weight: 700; }
 .income-total { color: #16a34a; font-weight: 700; }
 .expense-total { color: #dc2626; font-weight: 700; }
+
+/* Language switcher */
+.lang-switcher { display: flex; gap: 6px; margin-top: 10px; }
+.lang-btn { flex: 1; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: rgba(255,255,255,0.6); border-radius: 6px; padding: 6px 0; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+.lang-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+.lang-btn.active { background: #6366f1; border-color: #6366f1; color: #fff; }
+
+/* RTL overrides */
+[dir="rtl"] .customer-item { border-left: none; border-right: 3px solid transparent; }
+[dir="rtl"] .customer-item.active { border-right-color: #6366f1; border-left-color: transparent; }
+[dir="rtl"] .search-clear { right: auto; left: 24px; }
+[dir="rtl"] .month-stats { margin-left: 0; margin-right: auto; }
+[dir="rtl"] .col-resize-handle { right: auto; left: 0; }
+[dir="rtl"] .actions-th, [dir="rtl"] .actions-td { right: auto; left: 0; border-left: none; border-right: 1px solid #e5e7eb; }
+[dir="rtl"] .sidebar-header { text-align: right; }
+[dir="rtl"] .drive-folder-link { flex-direction: row-reverse; }
+[dir="rtl"] .customer-header { flex-direction: row-reverse; flex-wrap: wrap; }
+[dir="rtl"] .summary-cards { flex-direction: row-reverse; }

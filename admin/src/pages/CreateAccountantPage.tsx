@@ -17,6 +17,7 @@ export default function CreateAccountantPage({ onBack, onCreated }: Props) {
     twilio_from_number: '',
     gemini_api_key: '',
     default_currency: 'USD',
+    default_language: 'en',
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -70,6 +71,13 @@ export default function CreateAccountantPage({ onBack, onCreated }: Props) {
           <select value={form.default_currency} onChange={e => set('default_currency', e.target.value)} style={iStyle}>
             <option value="USD">USD</option>
             <option value="ILS">ILS</option>
+          </select>
+        </div>
+        <div style={rowStyle}>
+          <label>Default Language</label>
+          <select value={form.default_language} onChange={e => set('default_language', e.target.value)} style={iStyle}>
+            <option value="en">English</option>
+            <option value="ar">Arabic (عربي)</option>
           </select>
         </div>
         <button type="submit" disabled={loading} style={{ padding: '0.6rem', background: '#1a73e8', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}>

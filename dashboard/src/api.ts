@@ -51,6 +51,7 @@ export interface LoginResponse {
   display_name: string | null
   company_name: string | null
   logo_url: string | null
+  language: string | null
 }
 
 // ---------------------------------------------------------------------------

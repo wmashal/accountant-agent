@@ -15,6 +15,7 @@ export interface AccountantOut {
   google_drive_root_folder_id: string | null
   twilio_from_number: string | null
   default_currency: string
+  default_language: string
   is_active: boolean
   created_at: string
   customer_count: number
@@ -39,6 +40,7 @@ export interface CreateAccountantData {
   twilio_from_number?: string
   gemini_api_key?: string
   default_currency: string
+  default_language: string
 }
 
 export interface UpdateAccountantData {
@@ -50,6 +52,7 @@ export interface UpdateAccountantData {
   twilio_from_number?: string
   gemini_api_key?: string
   default_currency?: string
+  default_language?: string
   is_active?: boolean
   new_password?: string
 }
