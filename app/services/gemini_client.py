@@ -12,7 +12,9 @@ Return ONLY valid JSON matching this exact schema — no markdown fences, no exp
 
 {
   "vendor": "string",
+  "vendor_id": "string or null",
   "payer": "string or null",
+  "payer_id": "string or null",
   "receipt_number": "string or null",
   "cost": 0.00,
   "tax": 0.00,
@@ -25,7 +27,9 @@ Return ONLY valid JSON matching this exact schema — no markdown fences, no exp
 
 Rules:
 - vendor: the business/person who issued the invoice (transliterate to English if not Latin script)
-- payer: the business/person who paid or is billed — look for fields like "לכבוד", "מקור", "bill to", "client", "customer ID", "ח.פ", "ע.מ" — include any ID numbers found there; null if not shown
+- vendor_id: the tax/business registration number of the vendor — look for "ע.מ", "עוסק מורשה", "ח.פ", "VAT no", "ABN", "tax id", "dealer number"; null if not shown
+- payer: the business/person who paid or is billed — look for fields like "לכבוד", "מקור", "bill to", "client", "customer"; null if not shown
+- payer_id: the tax/business registration number of the payer — look for "ח.פ", "ע.מ", "עוסק מורשה", "VAT no", "company id", "dealer number" next to the payer name; null if not shown
 - receipt_number: the invoice/receipt number if shown (e.g. "קבלה מס'", "invoice #", "receipt no"); null if not present
 - cost: total amount including tax, as a number
 - tax: the GST/VAT/tax amount if explicitly shown as a separate line; null if not shown

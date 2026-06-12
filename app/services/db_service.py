@@ -132,6 +132,13 @@ async def update_receipt(
     logger.info(f"Receipt updated: {message_sid} status={status}")
 
 
+def _effective_status(data: ReceiptData, requested_status: str) -> str:
+    """If any key field is missing, force pending_confirmation regardless of requested status."""
+    if not data.vendor or data.cost is None or not data.date or not data.receipt_number or data.tax is None or data.tax_rate is None:
+        return "pending_confirmation"
+    return requested_status
+
+
 async def upsert_receipt(
     session: AsyncSession,
     message_sid: str,
@@ -169,9 +176,9 @@ async def upsert_receipt(
     if receipt.upload_date is None:
         receipt.upload_date = datetime.now(timezone.utc)
     receipt.file_url = file_url
-    receipt.status = status
+    receipt.status = _effective_status(data, status)
     await session.commit()
-    logger.info(f"Receipt upserted: {message_sid} status={status}")
+    logger.info(f"Receipt upserted: {message_sid} status={receipt.status}")
 
 
 async def upsert_receipt_from_drive(
@@ -212,9 +219,9 @@ async def upsert_receipt_from_drive(
         receipt.upload_date = datetime.now(timezone.utc)
     receipt.file_url = file_url
     receipt.drive_file_id = drive_file_id
-    receipt.status = "confirmed"
+    receipt.status = _effective_status(data, "confirmed")
     await session.commit()
-    logger.info(f"Drive receipt upserted: {message_sid} drive_file_id={drive_file_id}")
+    logger.info(f"Drive receipt upserted: {message_sid} drive_file_id={drive_file_id} status={receipt.status}")
 
 
 async def update_customer_profile(

@@ -9,6 +9,8 @@ logger = logging.getLogger(__name__)
 def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, default_currency: str = "USD", customer_identity: set[str] | None = None) -> ReceiptData:
     vendor = str(raw.get("vendor", "Unknown")).strip()
     payer = str(raw.get("payer") or "").strip()
+    vendor_id = str(raw.get("vendor_id") or "").strip()
+    payer_id = str(raw.get("payer_id") or "").strip()
     receipt_number = str(raw.get("receipt_number") or "").strip() or None
     cost = _parse_float(raw.get("cost"))
     receipt_language = raw.get("receipt_language", "unknown")
@@ -33,8 +35,10 @@ def normalize(raw: dict, extraction_model: str, raw_ocr: Optional[str] = None, d
     # Expense when someone else is the vendor (you paid them) — this is the default
     transaction_type = "expense"
     if customer_identity:
-        vendor_lower = vendor.lower()
-        if any(identity.lower() in vendor_lower for identity in customer_identity if identity):
+        # Income only when the customer is the ISSUER of the invoice (vendor side)
+        # Check vendor name and vendor's registration number only — never the payer side
+        searchable = f"{vendor.lower()} {vendor_id.lower()}"
+        if any(identity.lower() in searchable for identity in customer_identity if identity):
             transaction_type = "income"
 
     # --- Date ---

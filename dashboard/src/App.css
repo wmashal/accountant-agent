@@ -123,6 +123,13 @@
 .btn-icon-view:hover { background: #ede9fe; border-color: #a78bfa; }
 .btn-icon-disabled { opacity: 0.25; cursor: default; pointer-events: none; }
 
+/* Incomplete row (missing vendor, cost, date, receipt number, tax, or tax_rate) */
+.incomplete-row td { background: #fffbeb !important; box-shadow: inset 3px 0 0 #f59e0b; }
+.incomplete-row td:not(:first-child) { box-shadow: none; }
+.incomplete-row .actions-td { background: #fffbeb !important; }
+.receipts-table tr.incomplete-row:hover td { background: #fef3c7 !important; }
+.receipts-table tr.incomplete-row:hover .actions-td { background: #fef3c7 !important; }
+
 /* Inline edit row */
 .edit-row td { background: #f0f4ff !important; }
 .edit-input { border: 1px solid #c7d2fe; border-radius: 5px; padding: 4px 7px; font-size: 13px; width: 100%; min-width: 80px; box-sizing: border-box; outline: none; }

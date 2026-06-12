@@ -836,8 +836,15 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                             </tr>
                           </thead>
                           <tbody>
-                            {monthReceipts.map(r => (
-                              editingReceiptId === r.id ? (
+                            {[...monthReceipts].sort((a, b) => {
+                              const aInc = !a.vendor || a.cost == null || !a.date || !a.receipt_number || a.tax == null || a.tax_rate == null
+                              const bInc = !b.vendor || b.cost == null || !b.date || !b.receipt_number || b.tax == null || b.tax_rate == null
+                              if (aInc && !bInc) return -1
+                              if (!aInc && bInc) return 1
+                              return 0
+                            }).map(r => {
+                              const isIncomplete = !r.vendor || r.cost == null || !r.date || !r.receipt_number || r.tax == null || r.tax_rate == null
+                              return editingReceiptId === r.id ? (
                                 <tr key={r.id} className="edit-row">
                                   <td><input className="edit-input" value={editForm.date || ""} onChange={e => setEditForm(p => ({ ...p, date: e.target.value }))} placeholder={t.editDatePlaceholder} /></td>
                                   <td>{r.upload_date ? r.upload_date.slice(0, 10) : "—"}</td>
@@ -875,7 +882,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                   </td>
                                 </tr>
                               ) : (
-                                <tr key={r.id}>
+                                <tr key={r.id} className={isIncomplete ? "incomplete-row" : ""}>
                                   <td>{r.date || "—"}</td>
                                   <td>{r.upload_date ? r.upload_date.slice(0, 10) : "—"}</td>
                                   <td>{r.receipt_number || "—"}</td>
@@ -896,7 +903,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                       {r.transaction_type === "income" ? `↑ ${t.typeIncome}` : `↓ ${t.typeExpense}`}
                                     </button>
                                   </td>
-                                  <td><span className={`status-badge status-${r.status}`}>{statusLabel(r.status)}</span></td>
+                                  <td><span className={`status-badge ${isIncomplete ? 'status-pending_confirmation' : `status-${r.status}`}`}>{isIncomplete ? statusLabel('pending_confirmation') : statusLabel(r.status)}</span></td>
                                   <td className="action-cell actions-td">
                                     {r.file_url ? (
                                       <button className="btn-icon btn-icon-view" onClick={() => openPreview(r.file_url!)}>
@@ -923,7 +930,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
                                   </td>
                                 </tr>
                               )
-                            ))}
+                            })}
                             {/* Monthly totals row */}
                             <tr className="month-total-row">
                               <td colSpan={4}><strong>{t.monthTotal} ({formatMonth(month, lang)})</strong></td>
