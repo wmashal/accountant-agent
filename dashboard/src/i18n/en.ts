@@ -15,6 +15,8 @@ export const en = {
   noCustomers: 'No customers',
   logout: 'Logout',
   addCustomer: '+ Add Customer',
+  navDashboard: 'Dashboard',
+  navCustomers: 'Customers',
 
   // Summary cards
   confirmedIncome: 'Confirmed Income',
@@ -123,6 +125,16 @@ export const en = {
   // Export
   exportCsv: 'Export CSV',
   filterDateInvoice: 'Date (Invoice)',
+
+  // Home dashboard
+  needsAttentionTitle: 'Needs Attention',
+  needsAttentionEmpty: 'All caught up — no pending invoices',
+  pendingInvoices: (n: number) => `${n} pending`,
+  monthlyOverviewTitle: 'Monthly Overview',
+  pendingByCustomerTitle: 'Pending by Customer',
+  chartIncome: 'Income',
+  chartExpense: 'Expense',
+  chartPending: 'Pending',
 
   // Dynamic helpers
   invoicesCount: (n: number) => `${n} invoice${n !== 1 ? 's' : ''}`,

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { api, authApi, getToken, setToken, clearToken, CustomerSummary, Receipt, CreateCustomerData } from "./api"
+import { api, authApi, getToken, setToken, clearToken, CustomerSummary, Receipt, CreateCustomerData, DashboardStats } from "./api"
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts"
 import "./App.css"
 import { LangContext, useLang } from "./i18n/useLang"
 import { translations, Lang } from "./i18n/index"
@@ -167,8 +168,105 @@ function useColResize(initial: number[]) {
   return { widths, onMouseDown }
 }
 
+function HomeDashboard({ onSelectCustomer, customers }: {
+  onSelectCustomer: (customerId: number) => void
+  customers: CustomerSummary[]
+}) {
+  const { t, lang } = useLang()
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [loadingStats, setLoadingStats] = useState(true)
+
+  useEffect(() => {
+    api.getStats().then(s => { setStats(s); setLoadingStats(false) }).catch(() => setLoadingStats(false))
+  }, [])
+
+  const formatMonth = (m: string) => {
+    const [y, mo] = m.split("-")
+    return `${t.months[parseInt(mo) - 1]} ${y.slice(2)}`
+  }
+
+  const pendingChartData = (stats?.needs_attention || []).map(c => ({
+    name: c.display_name || c.company_name || `#${c.customer_id}`,
+    pending: c.pending_count,
+    id: c.customer_id,
+  }))
+
+  const monthlyChartData = (stats?.monthly || []).slice(-12).map(m => ({
+    name: formatMonth(m.month),
+    income: m.income,
+    expense: m.expense,
+  }))
+
+  if (loadingStats) return <div className="home-loading">{t.loading}</div>
+
+  return (
+    <div className="home-dashboard">
+
+      {/* Needs Attention */}
+      <section className="home-section">
+        <h2 className="home-section-title">{t.needsAttentionTitle}</h2>
+        {!stats || stats.needs_attention.length === 0 ? (
+          <p className="home-empty">{t.needsAttentionEmpty}</p>
+        ) : (
+          <div className="attention-cards">
+            {stats.needs_attention.map(c => (
+              <div key={c.customer_id} className="attention-card" onClick={() => onSelectCustomer(c.customer_id)}>
+                <div className="attention-card-name">{c.display_name || c.company_name || `#${c.customer_id}`}</div>
+                {c.company_id && <div className="attention-card-id">{c.company_id}</div>}
+                <div className="attention-card-count">{t.pendingInvoices(c.pending_count)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Pending by Customer bar chart */}
+      {pendingChartData.length > 0 && (
+        <section className="home-section">
+          <h2 className="home-section-title">{t.pendingByCustomerTitle}</h2>
+          <div className="home-chart-wrap">
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={pendingChartData} margin={{ top: 8, right: 16, left: 0, bottom: 40 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} angle={-25} textAnchor="end" interval={0} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} width={30} />
+                <Tooltip formatter={(v, _name, item) => [`${item?.payload?.pending ?? v}`, t.chartPending]} />
+                <Bar dataKey="pending" radius={[4, 4, 0, 0]} cursor="pointer"
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  onClick={(d: any) => onSelectCustomer(d.id as number)}>
+                  {pendingChartData.map((_, i) => (
+                    <Cell key={i} fill="#f59e0b" />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      )}
+
+      {/* Monthly overview bar chart */}
+      {monthlyChartData.length > 0 && (
+        <section className="home-section">
+          <h2 className="home-section-title">{t.monthlyOverviewTitle}</h2>
+          <div className="home-chart-wrap">
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={monthlyChartData} margin={{ top: 8, right: 16, left: 0, bottom: 40 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} angle={-25} textAnchor="end" interval={0} />
+                <YAxis tick={{ fontSize: 12 }} width={60} tickFormatter={(v: number | string) => Number(v) >= 1000 ? `${(Number(v) / 1000).toFixed(0)}k` : String(v)} />
+                <Tooltip formatter={(v, name) => [v != null ? Number(v).toFixed(2) : '—', name === "income" ? t.chartIncome : t.chartExpense]} />
+                <Bar dataKey="income" fill="#22c55e" radius={[4, 4, 0, 0]} name="income" />
+                <Bar dataKey="expense" fill="#ef4444" radius={[4, 4, 0, 0]} name="expense" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}
+
 function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { displayName: string | null; companyName: string | null; logoUrl: string | null } }) {
   const { t, lang, setLang } = useLang()
+  const [page, setPage] = useState<"home" | "customers">("home")
   const [customers, setCustomers] = useState<CustomerSummary[]>([])
   const [selected, setSelected] = useState<CustomerSummary | null>(null)
   const [receipts, setReceipts] = useState<Receipt[]>([])
@@ -243,6 +341,13 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
     })
     const data = await api.getReceipts(c.id)
     setReceipts(data)
+  }
+
+  const selectCustomerById = async (customerId: number) => {
+    const c = customers.find(x => x.id === customerId)
+    if (!c) return
+    setPage("customers")
+    await selectCustomer(c)
   }
 
   const saveProfile = async () => {
@@ -496,6 +601,15 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
             {t.logout}
           </button>
         </div>
+
+        <nav className="sidebar-nav">
+          <button className={`sidebar-nav-btn ${page === "home" ? "active" : ""}`} onClick={() => setPage("home")}>
+            <span className="sidebar-nav-icon">⊞</span>{t.navDashboard}
+          </button>
+          <button className={`sidebar-nav-btn ${page === "customers" ? "active" : ""}`} onClick={() => setPage("customers")}>
+            <span className="sidebar-nav-icon">👥</span>{t.navCustomers}
+          </button>
+        </nav>
         <div className="search-wrap">
           <input
             className="search-input"
@@ -518,7 +632,7 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
               <li
                 key={c.id}
                 className={`customer-item ${selected && selected.id === c.id ? "active" : ""}`}
-                onClick={() => selectCustomer(c)}
+                onClick={() => { setPage("customers"); selectCustomer(c) }}
               >
                 <div className="customer-item-top">
                   <div className="customer-name">
@@ -561,7 +675,9 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
       </aside>
 
       <main className="main">
-        {!selected ? (
+        {page === "home" ? (
+          <HomeDashboard onSelectCustomer={selectCustomerById} customers={customers} />
+        ) : !selected ? (
           <div className="empty-state">
             <h2>{t.selectCustomer}</h2>
             <p>{t.selectCustomerSub}</p>

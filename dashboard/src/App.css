@@ -243,3 +243,27 @@
 [dir="rtl"] .drive-folder-link { flex-direction: row-reverse; }
 [dir="rtl"] .customer-header { flex-direction: row-reverse; flex-wrap: wrap; }
 [dir="rtl"] .summary-cards { flex-direction: row-reverse; }
+
+/* Sidebar nav */
+.sidebar-nav { display: flex; flex-direction: column; gap: 2px; padding: 10px 10px 4px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.sidebar-nav-btn { display: flex; align-items: center; gap: 8px; background: transparent; border: none; color: rgba(255,255,255,0.65); border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 500; cursor: pointer; text-align: left; transition: all 0.15s; width: 100%; }
+.sidebar-nav-btn:hover { background: rgba(255,255,255,0.08); color: #fff; }
+.sidebar-nav-btn.active { background: rgba(99,102,241,0.25); color: #a5b4fc; }
+.sidebar-nav-icon { font-size: 15px; width: 18px; text-align: center; flex-shrink: 0; }
+[dir="rtl"] .sidebar-nav-btn { text-align: right; }
+
+/* Home dashboard */
+.home-dashboard { padding: 32px; max-width: 900px; }
+.home-loading { display: flex; align-items: center; justify-content: center; height: 200px; color: #9ca3af; font-size: 14px; }
+.home-section { margin-bottom: 36px; }
+.home-section-title { font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 16px; }
+.home-empty { color: #9ca3af; font-size: 14px; padding: 12px 0; }
+.home-chart-wrap { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px 12px 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+
+/* Attention cards */
+.attention-cards { display: flex; flex-wrap: wrap; gap: 12px; }
+.attention-card { background: #fff; border: 1px solid #fde68a; border-radius: 10px; padding: 16px 20px; cursor: pointer; min-width: 160px; transition: all 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.attention-card:hover { border-color: #f59e0b; box-shadow: 0 4px 12px rgba(245,158,11,0.15); transform: translateY(-1px); }
+.attention-card-name { font-size: 14px; font-weight: 700; color: #111827; margin-bottom: 2px; }
+.attention-card-id { font-size: 11px; color: #9ca3af; margin-bottom: 8px; }
+.attention-card-count { display: inline-block; background: #fef3c7; color: #92400e; border-radius: 20px; padding: 3px 10px; font-size: 12px; font-weight: 700; }

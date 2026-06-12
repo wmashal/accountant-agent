@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
@@ -368,3 +368,92 @@ async def delete_customer(
 
     await session.delete(customer)
     await session.commit()
+
+
+# --- Stats endpoint ---
+
+class NeedsAttentionItem(BaseModel):
+    customer_id: int
+    display_name: Optional[str]
+    company_name: Optional[str]
+    company_id: Optional[str]
+    pending_count: int
+
+
+class MonthlyStatItem(BaseModel):
+    month: str
+    income: float
+    expense: float
+    count: int
+
+
+class DashboardStats(BaseModel):
+    needs_attention: list[NeedsAttentionItem]
+    monthly: list[MonthlyStatItem]
+
+
+@router.get("/stats", response_model=DashboardStats)
+async def get_dashboard_stats(
+    session: AsyncSession = Depends(get_session),
+    current: dict = Depends(get_current_accountant),
+):
+    accountant_id = int(current["sub"])
+
+    # Needs attention: customers with pending_confirmation receipts
+    pending_result = await session.execute(
+        select(Customer, func.count(Receipt.id).label("pending_count"))
+        .join(Receipt, Receipt.customer_id == Customer.id)
+        .where(
+            Customer.accountant_id == accountant_id,
+            Receipt.accountant_id == accountant_id,
+            Receipt.status == "pending_confirmation",
+        )
+        .group_by(Customer.id)
+        .order_by(func.count(Receipt.id).desc())
+    )
+    needs_attention = [
+        NeedsAttentionItem(
+            customer_id=row.Customer.id,
+            display_name=row.Customer.display_name,
+            company_name=row.Customer.company_name,
+            company_id=row.Customer.company_id,
+            pending_count=row.pending_count,
+        )
+        for row in pending_result.all()
+    ]
+
+    # Monthly stats: confirmed receipts grouped by upload month
+    monthly_result = await session.execute(
+        select(Receipt)
+        .where(
+            Receipt.accountant_id == accountant_id,
+            Receipt.status == "confirmed",
+            Receipt.upload_date.isnot(None),
+        )
+    )
+    receipts = monthly_result.scalars().all()
+
+    monthly_map: dict[str, dict] = {}
+    for r in receipts:
+        month = r.upload_date.strftime("%Y-%m") if r.upload_date else None
+        if not month:
+            continue
+        if month not in monthly_map:
+            monthly_map[month] = {"income": 0.0, "expense": 0.0, "count": 0}
+        monthly_map[month]["count"] += 1
+        if r.transaction_type == "income":
+            monthly_map[month]["income"] += r.cost or 0
+        else:
+            monthly_map[month]["expense"] += r.cost or 0
+
+    monthly = [
+        MonthlyStatItem(
+            month=month,
+            income=round(data["income"], 2),
+            expense=round(data["expense"], 2),
+            count=data["count"],
+        )
+        for month, data in sorted(monthly_map.items())
+    ]
+
+    return DashboardStats(needs_attention=needs_attention, monthly=monthly)

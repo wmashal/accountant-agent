@@ -17,6 +17,8 @@ export const ar: Translations = {
   noCustomers: 'لا يوجد عملاء',
   logout: 'تسجيل الخروج',
   addCustomer: '+ إضافة عميل',
+  navDashboard: 'الرئيسية',
+  navCustomers: 'العملاء',
 
   // Summary cards
   confirmedIncome: 'الدخل المؤكد',
@@ -125,6 +127,16 @@ export const ar: Translations = {
   // Export
   exportCsv: 'تصدير CSV',
   filterDateInvoice: 'التاريخ (فاتورة)',
+
+  // Home dashboard
+  needsAttentionTitle: 'يحتاج مراجعة',
+  needsAttentionEmpty: 'لا توجد فواتير معلّقة',
+  pendingInvoices: (n: number) => `${n} معلّق`,
+  monthlyOverviewTitle: 'النظرة الشهرية',
+  pendingByCustomerTitle: 'المعلّق حسب العميل',
+  chartIncome: 'دخل',
+  chartExpense: 'مصروف',
+  chartPending: 'معلّق',
 
   // Dynamic helpers
   invoicesCount: (n: number) => `${n} ${n === 1 ? 'فاتورة' : 'فواتير'}`,

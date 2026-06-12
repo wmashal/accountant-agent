@@ -36,6 +36,26 @@ export interface Receipt {
   created_at: string
 }
 
+export interface NeedsAttentionItem {
+  customer_id: number
+  display_name: string | null
+  company_name: string | null
+  company_id: string | null
+  pending_count: number
+}
+
+export interface MonthlyStatItem {
+  month: string
+  income: number
+  expense: number
+  count: number
+}
+
+export interface DashboardStats {
+  needs_attention: NeedsAttentionItem[]
+  monthly: MonthlyStatItem[]
+}
+
 export interface CreateCustomerData {
   display_name: string
   company_name?: string
@@ -151,4 +171,7 @@ export const api = {
       headers: authHeaders(),
       body: JSON.stringify(patch),
     }).then(r => handleResponse(r)),
+
+  getStats: (): Promise<DashboardStats> =>
+    fetch(`${BASE}/stats`, { headers: authHeaders() }).then(r => handleResponse<DashboardStats>(r)),
 }
