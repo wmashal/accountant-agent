@@ -380,16 +380,20 @@ class NeedsAttentionItem(BaseModel):
     pending_count: int
 
 
-class MonthlyStatItem(BaseModel):
-    month: str
-    income: float
-    expense: float
-    count: int
+class CustomerStatusCounts(BaseModel):
+    customer_id: int
+    display_name: Optional[str]
+    company_name: Optional[str]
+    company_id: Optional[str]
+    pending: int
+    confirmed: int
+    error: int
+    rejected: int
 
 
 class DashboardStats(BaseModel):
     needs_attention: list[NeedsAttentionItem]
-    monthly: list[MonthlyStatItem]
+    customer_status_counts: list[CustomerStatusCounts]
 
 
 @router.get("/stats", response_model=DashboardStats)
@@ -422,38 +426,45 @@ async def get_dashboard_stats(
         for row in pending_result.all()
     ]
 
-    # Monthly stats: confirmed receipts grouped by upload month
-    monthly_result = await session.execute(
-        select(Receipt)
+    # Per-customer status counts (all statuses, only customers with at least 1 receipt)
+    counts_result = await session.execute(
+        select(Customer, Receipt.status, func.count(Receipt.id).label("cnt"))
+        .join(Receipt, Receipt.customer_id == Customer.id)
         .where(
+            Customer.accountant_id == accountant_id,
             Receipt.accountant_id == accountant_id,
-            Receipt.status == "confirmed",
-            Receipt.upload_date.isnot(None),
         )
+        .group_by(Customer.id, Receipt.status)
     )
-    receipts = monthly_result.scalars().all()
+    csc_map: dict[int, dict] = {}
+    for row in counts_result.all():
+        cid = row.Customer.id
+        if cid not in csc_map:
+            csc_map[cid] = {
+                "customer": row.Customer,
+                "pending": 0, "confirmed": 0, "error": 0, "rejected": 0,
+            }
+        status = row.status
+        if status == "pending_confirmation":
+            csc_map[cid]["pending"] += row.cnt
+        elif status in ("confirmed", "error", "rejected"):
+            csc_map[cid][status] += row.cnt
 
-    monthly_map: dict[str, dict] = {}
-    for r in receipts:
-        month = r.upload_date.strftime("%Y-%m") if r.upload_date else None
-        if not month:
-            continue
-        if month not in monthly_map:
-            monthly_map[month] = {"income": 0.0, "expense": 0.0, "count": 0}
-        monthly_map[month]["count"] += 1
-        if r.transaction_type == "income":
-            monthly_map[month]["income"] += r.cost or 0
-        else:
-            monthly_map[month]["expense"] += r.cost or 0
-
-    monthly = [
-        MonthlyStatItem(
-            month=month,
-            income=round(data["income"], 2),
-            expense=round(data["expense"], 2),
-            count=data["count"],
+    customer_status_counts = [
+        CustomerStatusCounts(
+            customer_id=cid,
+            display_name=d["customer"].display_name,
+            company_name=d["customer"].company_name,
+            company_id=d["customer"].company_id,
+            pending=d["pending"],
+            confirmed=d["confirmed"],
+            error=d["error"],
+            rejected=d["rejected"],
         )
-        for month, data in sorted(monthly_map.items())
+        for cid, d in csc_map.items()
+        if d["pending"] + d["confirmed"] + d["error"] + d["rejected"] > 0
     ]
+    # Sort by pending desc, then by name
+    customer_status_counts.sort(key=lambda x: (-x.pending, x.display_name or x.company_name or ""))
 
-    return DashboardStats(needs_attention=needs_attention, monthly=monthly)
+    return DashboardStats(needs_attention=needs_attention, customer_status_counts=customer_status_counts)

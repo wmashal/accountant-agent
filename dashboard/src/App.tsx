@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { api, authApi, getToken, setToken, clearToken, CustomerSummary, Receipt, CreateCustomerData, DashboardStats } from "./api"
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts"
+import { api, authApi, getToken, setToken, clearToken, CustomerSummary, Receipt, CreateCustomerData, DashboardStats, CustomerStatusCounts } from "./api"
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import "./App.css"
 import { LangContext, useLang } from "./i18n/useLang"
 import { translations, Lang } from "./i18n/index"
@@ -172,7 +172,7 @@ function HomeDashboard({ onSelectCustomer, customers }: {
   onSelectCustomer: (customerId: number) => void
   customers: CustomerSummary[]
 }) {
-  const { t, lang } = useLang()
+  const { t } = useLang()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loadingStats, setLoadingStats] = useState(true)
 
@@ -180,21 +180,9 @@ function HomeDashboard({ onSelectCustomer, customers }: {
     api.getStats().then(s => { setStats(s); setLoadingStats(false) }).catch(() => setLoadingStats(false))
   }, [])
 
-  const formatMonth = (m: string) => {
-    const [y, mo] = m.split("-")
-    return `${t.months[parseInt(mo) - 1]} ${y.slice(2)}`
-  }
-
-  const pendingChartData = (stats?.needs_attention || []).map(c => ({
+  const stackedChartData: (CustomerStatusCounts & { name: string })[] = (stats?.customer_status_counts || []).map(c => ({
+    ...c,
     name: c.display_name || c.company_name || `#${c.customer_id}`,
-    pending: c.pending_count,
-    id: c.customer_id,
-  }))
-
-  const monthlyChartData = (stats?.monthly || []).slice(-12).map(m => ({
-    name: formatMonth(m.month),
-    income: m.income,
-    expense: m.expense,
   }))
 
   if (loadingStats) return <div className="home-loading">{t.loading}</div>
@@ -220,41 +208,70 @@ function HomeDashboard({ onSelectCustomer, customers }: {
         )}
       </section>
 
-      {/* Pending by Customer bar chart */}
-      {pendingChartData.length > 0 && (
+      {/* Stacked status bar chart per customer */}
+      {stackedChartData.length > 0 && (
         <section className="home-section">
           <h2 className="home-section-title">{t.pendingByCustomerTitle}</h2>
           <div className="home-chart-wrap">
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={pendingChartData} margin={{ top: 8, right: 16, left: 0, bottom: 40 }}>
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} angle={-25} textAnchor="end" interval={0} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} width={30} />
-                <Tooltip formatter={(v, _name, item) => [`${item?.payload?.pending ?? v}`, t.chartPending]} />
-                <Bar dataKey="pending" radius={[4, 4, 0, 0]} cursor="pointer"
+            <ResponsiveContainer width="100%" height={Math.max(240, stackedChartData.length * 52 + 80)}>
+              <BarChart
+                data={stackedChartData}
+                layout="vertical"
+                margin={{ top: 8, right: 24, left: 0, bottom: 8 }}
+                barCategoryGap="30%"
+              >
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 12 }} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  tick={{ fontSize: 12 }}
+                  width={130}
+                  tickLine={false}
+                />
+                <Tooltip
+                  cursor={{ fill: "rgba(0,0,0,0.04)" }}
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  onClick={(d: any) => onSelectCustomer(d.id as number)}>
-                  {pendingChartData.map((_, i) => (
-                    <Cell key={i} fill="#f59e0b" />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-      )}
-
-      {/* Monthly overview bar chart */}
-      {monthlyChartData.length > 0 && (
-        <section className="home-section">
-          <h2 className="home-section-title">{t.monthlyOverviewTitle}</h2>
-          <div className="home-chart-wrap">
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={monthlyChartData} margin={{ top: 8, right: 16, left: 0, bottom: 40 }}>
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} angle={-25} textAnchor="end" interval={0} />
-                <YAxis tick={{ fontSize: 12 }} width={60} tickFormatter={(v: number | string) => Number(v) >= 1000 ? `${(Number(v) / 1000).toFixed(0)}k` : String(v)} />
-                <Tooltip formatter={(v, name) => [v != null ? Number(v).toFixed(2) : '—', name === "income" ? t.chartIncome : t.chartExpense]} />
-                <Bar dataKey="income" fill="#22c55e" radius={[4, 4, 0, 0]} name="income" />
-                <Bar dataKey="expense" fill="#ef4444" radius={[4, 4, 0, 0]} name="expense" />
+                  formatter={(v: any, name: any) => {
+                    const labels: Record<string, string> = {
+                      pending: t.statusPendingConfirmation,
+                      confirmed: t.statusConfirmed,
+                      error: t.statusError,
+                      rejected: t.statusRejected,
+                    }
+                    return [String(v ?? 0), labels[name] ?? name]
+                  }}
+                />
+                <Legend
+                  formatter={(value) => {
+                    const labels: Record<string, string> = {
+                      pending: t.statusPendingConfirmation,
+                      confirmed: t.statusConfirmed,
+                      error: t.statusError,
+                      rejected: t.statusRejected,
+                    }
+                    return labels[value] ?? value
+                  }}
+                />
+                <Bar
+                  dataKey="pending" stackId="s" fill="#f59e0b" radius={[0, 0, 0, 0]}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  onClick={(d: any) => onSelectCustomer(d.customer_id as number)} cursor="pointer"
+                />
+                <Bar
+                  dataKey="confirmed" stackId="s" fill="#22c55e" radius={[0, 0, 0, 0]}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  onClick={(d: any) => onSelectCustomer(d.customer_id as number)} cursor="pointer"
+                />
+                <Bar
+                  dataKey="error" stackId="s" fill="#a855f7" radius={[0, 0, 0, 0]}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  onClick={(d: any) => onSelectCustomer(d.customer_id as number)} cursor="pointer"
+                />
+                <Bar
+                  dataKey="rejected" stackId="s" fill="#ef4444" radius={[4, 4, 4, 4]}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  onClick={(d: any) => onSelectCustomer(d.customer_id as number)} cursor="pointer"
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -605,9 +622,6 @@ function Dashboard({ onLogout, profile }: { onLogout: () => void; profile: { dis
         <nav className="sidebar-nav">
           <button className={`sidebar-nav-btn ${page === "home" ? "active" : ""}`} onClick={() => setPage("home")}>
             <span className="sidebar-nav-icon">⊞</span>{t.navDashboard}
-          </button>
-          <button className={`sidebar-nav-btn ${page === "customers" ? "active" : ""}`} onClick={() => setPage("customers")}>
-            <span className="sidebar-nav-icon">👥</span>{t.navCustomers}
           </button>
         </nav>
         <div className="search-wrap">

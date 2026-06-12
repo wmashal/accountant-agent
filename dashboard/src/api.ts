@@ -44,16 +44,20 @@ export interface NeedsAttentionItem {
   pending_count: number
 }
 
-export interface MonthlyStatItem {
-  month: string
-  income: number
-  expense: number
-  count: number
+export interface CustomerStatusCounts {
+  customer_id: number
+  display_name: string | null
+  company_name: string | null
+  company_id: string | null
+  pending: number
+  confirmed: number
+  error: number
+  rejected: number
 }
 
 export interface DashboardStats {
   needs_attention: NeedsAttentionItem[]
-  monthly: MonthlyStatItem[]
+  customer_status_counts: CustomerStatusCounts[]
 }
 
 export interface CreateCustomerData {
